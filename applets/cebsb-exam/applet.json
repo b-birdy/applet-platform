@@ -1,1 +1,45 @@
-ewogICJpZCI6ICJjZWJzYi1leGFtIiwKICAibmFtZSI6ICJDRUJTQuaxieiLseWPjOaLvOe7g+S5oCIsCiAgImljb24iOiAiaWNvbi5zdmciLAogICJlbnRyeSI6ICJpbmRleC5odG1sIiwKICAidmVyc2lvbiI6ICIxLjAuMCIsCiAgImRlc2NyaXB0aW9uIjogIuWQrOiLseivreivremfs+eMnOaxieWtl+eahOaxieiLseWPjOaLvOe7g+S5oO+8muWGhee9riA0MzAg5a2X6K+N5bqT77yM5pSv5oyB5pW05a2X6YWN5a2X5LiO5ouG5a2X6YWN5a2X77yM5oiQ57up5LiO5YGP5aW95oyJ55m75b2V55So5oi36ZqU56a75L+d5a2Y44CCIiwKICAiZXh0ZXJuYWxfYXBpcyI6IFtdLAogICJ0YWJsZXMiOiBbCiAgICB7CiAgICAgICJuYW1lIjogImNlYnNiX3N0YXRzIiwKICAgICAgImNvbHVtbnMiOiBbCiAgICAgICAgeyAibmFtZSI6ICJzZXEiLCAidHlwZSI6ICJpbnRlZ2VyIiwgInJlcXVpcmVkIjogdHJ1ZSB9LAogICAgICAgIHsgIm5hbWUiOiAiY2hhciIsICJ0eXBlIjogInRleHQiIH0sCiAgICAgICAgeyAibmFtZSI6ICJwaW55aW4iLCAidHlwZSI6ICJ0ZXh0IiB9LAogICAgICAgIHsgIm5hbWUiOiAidG90YWwiLCAidHlwZSI6ICJpbnRlZ2VyIiwgImRlZmF1bHQiOiAwIH0sCiAgICAgICAgeyAibmFtZSI6ICJjb3JyZWN0IiwgInR5cGUiOiAiaW50ZWdlciIsICJkZWZhdWx0IjogMCB9LAogICAgICAgIHsgIm5hbWUiOiAid3JvbmciLCAidHlwZSI6ICJpbnRlZ2VyIiwgImRlZmF1bHQiOiAwIH0sCiAgICAgICAgeyAibmFtZSI6ICJ1cGRhdGVkX2F0IiwgInR5cGUiOiAidGV4dCIgfQogICAgICBdCiAgICB9LAogICAgewogICAgICAibmFtZSI6ICJjZWJzYl9hbnN3ZXJzIiwKICAgICAgImNvbHVtbnMiOiBbCiAgICAgICAgeyAibmFtZSI6ICJzZXEiLCAidHlwZSI6ICJpbnRlZ2VyIiwgInJlcXVpcmVkIjogdHJ1ZSB9LAogICAgICAgIHsgIm5hbWUiOiAiY2hhciIsICJ0eXBlIjogInRleHQiIH0sCiAgICAgICAgeyAibmFtZSI6ICJjb3JyZWN0IiwgInR5cGUiOiAiaW50ZWdlciIsICJkZWZhdWx0IjogMCB9LAogICAgICAgIHsgIm5hbWUiOiAic3R5bGUiLCAidHlwZSI6ICJ0ZXh0IiB9LAogICAgICAgIHsgIm5hbWUiOiAiYW5zd2VyZWRfYXQiLCAidHlwZSI6ICJ0ZXh0IiB9CiAgICAgIF0KICAgIH0sCiAgICB7CiAgICAgICJuYW1lIjogImNlYnNiX3NldHRpbmdzIiwKICAgICAgImNvbHVtbnMiOiBbCiAgICAgICAgeyAibmFtZSI6ICJ2b2ljZV91cmkiLCAidHlwZSI6ICJ0ZXh0IiB9LAogICAgICAgIHsgIm5hbWUiOiAiemhfdm9pY2VfdXJpIiwgInR5cGUiOiAidGV4dCIgfSwKICAgICAgICB7ICJuYW1lIjogInJhdGUiLCAidHlwZSI6ICJ0ZXh0IiB9LAogICAgICAgIHsgIm5hbWUiOiAiemhfcmVwZWF0IiwgInR5cGUiOiAidGV4dCIgfSwKICAgICAgICB7ICJuYW1lIjogInN0eWxlIiwgInR5cGUiOiAidGV4dCIgfSwKICAgICAgICB7ICJuYW1lIjogIm1vZGUiLCAidHlwZSI6ICJ0ZXh0IiB9LAogICAgICAgIHsgIm5hbWUiOiAiY291bnQiLCAidHlwZSI6ICJpbnRlZ2VyIiwgImRlZmF1bHQiOiAxMDAgfQogICAgICBdCiAgICB9CiAgXQp9Cg==
+{
+  "id": "cebsb-exam",
+  "name": "CEBSB汉英双拼练习",
+  "icon": "icon.svg",
+  "entry": "index.html",
+  "version": "1.0.0",
+  "description": "听英语语音猜汉字的汉英双拼练习：内置 430 字词库，支持整字配字与拆字配字，成绩与偏好按登录用户隔离保存。",
+  "external_apis": [],
+  "tables": [
+    {
+      "name": "cebsb_stats",
+      "columns": [
+        { "name": "seq", "type": "integer", "required": true },
+        { "name": "char", "type": "text" },
+        { "name": "pinyin", "type": "text" },
+        { "name": "total", "type": "integer", "default": 0 },
+        { "name": "correct", "type": "integer", "default": 0 },
+        { "name": "wrong", "type": "integer", "default": 0 },
+        { "name": "updated_at", "type": "text" }
+      ]
+    },
+    {
+      "name": "cebsb_answers",
+      "columns": [
+        { "name": "seq", "type": "integer", "required": true },
+        { "name": "char", "type": "text" },
+        { "name": "correct", "type": "integer", "default": 0 },
+        { "name": "style", "type": "text" },
+        { "name": "answered_at", "type": "text" }
+      ]
+    },
+    {
+      "name": "cebsb_settings",
+      "columns": [
+        { "name": "voice_uri", "type": "text" },
+        { "name": "zh_voice_uri", "type": "text" },
+        { "name": "rate", "type": "text" },
+        { "name": "zh_repeat", "type": "text" },
+        { "name": "style", "type": "text" },
+        { "name": "mode", "type": "text" },
+        { "name": "count", "type": "integer", "default": 100 }
+      ]
+    }
+  ]
+}
