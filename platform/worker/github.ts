@@ -147,8 +147,20 @@ export class GitHubClient {
 
   async openPR(title: string, head: string, base: string): Promise<number> {
     const { status, json } = await this.call('POST', '/pulls', { title, head, base, body: '' });
-    if (status !== 201) throw new Error(`openPR: HTTP ${status} ${JSON.stringify(json)}`);
-    return (json as any).number as number;
+    if (status === 201) return (json as any).number as number;
+    // GitHub 对"该 head 分支曾有历史 PR"返回 422（A pull request already exists ...）：
+    // 复用该分支已有的 PR（含 closed——重开并返回），避免同分支永远无法再开 PR
+    if (status === 422) {
+      const list = await this.call('GET', `/pulls?head=${this.owner}:${encodeURIComponent(head)}&base=${encodeURIComponent(base)}&state=all&per_page=1`);
+      if (list.status === 200 && Array.isArray(list.json) && list.json.length > 0) {
+        const existing = list.json[0] as { number: number; state: string };
+        if (existing.state === 'closed') {
+          await this.call('PATCH', `/pulls/${existing.number}`, { state: 'open' });
+        }
+        return existing.number;
+      }
+    }
+    throw new Error(`openPR: HTTP ${status} ${JSON.stringify(json)}`);
   }
 
   async getPR(num: number): Promise<{ state: 'open' | 'closed' | 'merged'; head: string; mergeable: boolean }> {

@@ -94,6 +94,19 @@ describe('GitHubClient', () => {
     expect(create!.body.sha).toBe('commit1');
   });
 
+  it('openPR reuses existing PR on 422 already-exists (reopens closed)', async () => {
+    const { impl, recorded } = makeFetch([
+      { match: (m, u) => m === 'POST' && u === `${API}/pulls`, reply: () => ({ status: 422, body: { message: 'Validation Failed', errors: [{ resource: 'PullRequest', code: 'custom', message: 'A pull request already exists for applet/demo.' }] } }) },
+      { match: (m, u) => m === 'GET' && u.startsWith(`${API}/pulls?head=`), reply: () => ({ status: 200, body: [{ number: 24, state: 'closed' }] }) },
+      { match: (m, u) => m === 'PATCH' && u === `${API}/pulls/24`, reply: () => ({ status: 200, body: { number: 24, state: 'open' } }) },
+    ]);
+    const gh = new GitHubClient('t', 'o', 'r', impl);
+    const n = await gh.openPR('title', 'applet/demo', 'main');
+    expect(n).toBe(24);
+    const reopen = recorded.find((r) => r.method === 'PATCH' && r.url === `${API}/pulls/24`);
+    expect(reopen!.body.state).toBe('open');
+  });
+
   it('getPR 404 throws NotFound', async () => {
     const { impl } = makeFetch([]);
     const gh = new GitHubClient('t', 'o', 'r', impl);
