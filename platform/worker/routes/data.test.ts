@@ -152,6 +152,50 @@ describe('quota', () => {
   });
 });
 
+describe('per-user quota (final review I3/I4)', () => {
+  it('two users each under limit do not trigger 413 even when combined rows exceed it', async () => {
+    // quota.word-cards.rows 已在上个用例设为 50
+    await env.DB.exec('DELETE FROM a_word_cards_words');
+    // 用户 B 写 40 行（A 不写）
+    const rows = Array.from({ length: 40 }, (_, i) => ({ word: `b${i}` }));
+    const batch = await SELF.fetch(`${BASE}/batch`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: cookieB },
+      body: JSON.stringify({ rows }),
+    });
+    expect(batch.status).toBe(200);
+    // B 再写 10 行到 50（=限额，不超）→ 应成功；A 写 1 行（A 自己 0 行）→ 也应成功
+    const bMore = await SELF.fetch(`${BASE}/batch`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: cookieB },
+      body: JSON.stringify({ rows: Array.from({ length: 10 }, (_, i) => ({ word: `b2-${i}` })) }),
+    });
+    expect(bMore.status).toBe(200);
+    const aOne = await SELF.fetch(BASE, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: cookieA },
+      body: JSON.stringify({ word: 'a-under-own-quota' }),
+    });
+    expect(aOne.status).toBe(201); // 全表 51 行 > 50，但 A 自己 1 行
+  });
+
+  it('quota_bytes is enforced (I4)', async () => {
+    await env.DB.exec('DELETE FROM a_word_cards_words');
+    await env.DB.prepare(`INSERT INTO t_settings (key, value) VALUES ('quota.word-cards.bytes', '30') ON CONFLICT(key) DO UPDATE SET value='30'`).run();
+    // word 'abcdef...' 长度超 30B
+    const r = await SELF.fetch(BASE, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie: cookieA },
+      body: JSON.stringify({ word: 'x'.repeat(100) }),
+    });
+    expect(r.status).toBe(413);
+    const err: any = await r.json();
+    expect(err.error).toBe('QUOTA_EXCEEDED');
+    expect(err.limit.bytes).toBe(30);
+    await env.DB.prepare(`DELETE FROM t_settings WHERE key='quota.word-cards.bytes'`).run();
+  });
+});
+
 describe('batch atomicity', () => {
   it('rolls back whole batch when one row fails', async () => {
     await env.DB.exec('DELETE FROM a_word_cards_words');

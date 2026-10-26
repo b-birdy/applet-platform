@@ -66,7 +66,13 @@ async function serveFrom(c: any, prefix: string, slug: string, filePath: string,
   const key = `${prefix}/${slug}/${filePath}`;
   const obj = await c.env.ASSETS.get(key);
   if (!obj) return c.json({ error: 'NOT_FOUND' }, 404);
-  return new Response(obj.body, { headers: { 'content-type': contentTypeOf(filePath), 'cache-control': 'no-store' } });
+  const headers: Record<string, string> = { 'content-type': contentTypeOf(filePath), 'cache-control': 'no-store' };
+  // CSP（final review I6）：静态检查是提交时红线，CSP 是运行时红线
+  // script 限自身+平台运行时；connect-src 需放开同源（Data API）
+  if (/\.html?$/i.test(filePath)) {
+    headers['content-security-policy'] = "default-src 'self'; script-src 'self' /app-runtime.js; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'";
+  }
+  return new Response(obj.body, { headers });
 }
 
 function splitPath(raw: string): { slug: string; file: string } | null {
@@ -98,3 +104,15 @@ serveRoutes.get('/app-runtime.js', () =>
     headers: { 'content-type': 'application/javascript; charset=utf-8', 'cache-control': 'no-store' },
   })
 );
+
+// SPA 回退：前端路由（/、/login、/profile、/admin/*…）全部回 index.html
+// 顺序在所有 API/applet 路由之后挂载
+serveRoutes.get('/:spa{.*}', async (c) => {
+  const path = new URL(c.req.url).pathname;
+  if (!path.startsWith('/api/') && path !== '/app-runtime.js' && !path.startsWith('/app/') && !path.startsWith('/preview/') && !path.startsWith('/mcp')) {
+    const obj = await c.env.ASSETS.get('spa/index.html');
+    if (!obj) return c.json({ error: 'SPA_NOT_DEPLOYED' }, 404);
+    return new Response(obj.body, { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } });
+  }
+  return c.json({ error: 'NOT_FOUND' }, 404);
+});

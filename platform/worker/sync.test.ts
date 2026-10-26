@@ -62,6 +62,26 @@ describe('syncOnce', () => {
     expect(JSON.parse(report.value)).toEqual([]);
   });
 
+  it('creates physical tables + manifest snapshot on first sync (Critical #1)', async () => {
+    // 用一个全新的 applet 走生产同步路径
+    const m2 = MANIFEST.replace('syncapp', 'tableapp');
+    const contents = new Map<string, string>([
+      ['applets/tableapp/applet.json', m2],
+      ['applets/tableapp/index.html', '<html><script src="/app-runtime.js"></script></html>'],
+    ]);
+    const gh = makeStubGH(
+      [{ path: 'applets/tableapp/applet.json', size: m2.length }, { path: 'applets/tableapp/index.html', size: 60 }],
+      contents
+    );
+    await syncOnce({ DB: env.DB, ASSETS: env.ASSETS, GITHUB: gh } as any);
+    // 物理表存在（syncapp 的表在更早用例的 manifest 声明了 items）
+    const phys = await env.DB.prepare(`SELECT name FROM sqlite_master WHERE name='a_tableapp_items'`).all();
+    expect(phys.results).toHaveLength(1);
+    const snap = await env.DB.prepare(`SELECT value FROM t_settings WHERE key='manifest.tableapp'`).first<any>();
+    expect(snap).not.toBeNull();
+    expect(JSON.parse(snap.value).items).toBeDefined();
+  });
+
   it('is idempotent — second run adds nothing', async () => {
     const gh = makeStubGH(
       [{ path: 'applets/syncapp/applet.json', size: 10 }, { path: 'applets/syncapp/index.html', size: 60 }],

@@ -45,7 +45,11 @@ myRoutes.post('/api/applet-token', async (c) => {
   const applet = await requireAuthorizedApplet(c, appletId);
   if (!applet) return c.json({ error: 'APPLET_FORBIDDEN' }, 403);
 
-  const key = c.env.MCP_SIGNING_KEY ?? 'insecure-dev-key';
+  const key = c.env.MCP_SIGNING_KEY;
+  if (!key) {
+    // fail closed：Secret 漏配宁可不可用，也不签发可伪造凭据
+    return c.json({ error: 'SIGNING_KEY_NOT_CONFIGURED' }, 503);
+  }
   const token = await signAppletToken({ userId: auth.userId, appletId, exp: Math.floor(Date.now() / 1000) + 3600 }, key);
   return c.json({ token, expiresIn: 3600 });
 });

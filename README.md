@@ -30,9 +30,7 @@ applet-platform/
 1. **Fork 或使用本仓库**：本仓库应为 public，包含全部代码与 CI。
 2. **创建 D1 数据库**：Cloudflare 控制台 → Storage & Databases → D1 → Create，命名 `applet-platform-db`。创建后记下 Database ID。
 3. **创建 R2 存储桶**：Storage & Databases → R2 → Create bucket，命名 `applet-platform-assets`。
-4. **创建 Worker**：Workers & Pages → Create → 选择「连接 Git 仓库」（Connect to Git），选中本仓库。构建设置：
-   - Build command: `pnpm install --frozen-lockfile && pnpm build`
-   - 输出目录/部署方式：Workers 部署（非 Pages）。也可用 Wrangler CLI 部署（见下）。
+4. **创建 Worker**：推荐用 Wrangler CLI 部署（见下方「Wrangler CLI 部署」；SPA 由 Worker 内建路由回退伺服，无需额外 Assets 配置）。若用控制台连接 Git 仓库，Build command 填 `pnpm install --frozen-lockfile && pnpm build`。
 5. **配置 wrangler.toml**：把 `platform/worker/wrangler.toml` 中 `database_id` 的占位符替换为第 2 步的 Database ID（文件中有 `TODO(deploy)` 注释标记）。
 6. **绑定资源**：Worker → Settings → Bindings：绑定第 2 步的 D1（变量名 `DB`）与第 3 步的 R2（变量名 `ASSETS`）；确认 Cron Trigger 已启用（每 5 分钟）。
 7. **配置 Secrets**（Worker → Settings → Variables and Secrets，全部为 Secret 类型）：

@@ -1,16 +1,5 @@
-declare module '*.sql?raw' {
-  const sql: string;
-  export default sql;
-}
-declare module '*.md?raw' {
-  const md: string;
-  export default md;
-}
-declare module '*.js?raw' {
-  const js: string;
-  export default js;
-}
-declare module '*.vue?raw' {
-  const vue: string;
-  export default vue;
+// Vite ?raw 导入的通用声明（sql/md/js/ts/vue 全覆盖）
+declare module '*?raw' {
+  const content: string;
+  export default content;
 }

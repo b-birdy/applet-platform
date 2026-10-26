@@ -2,6 +2,7 @@
 import specMd from '../../docs/applet-spec.md?raw';
 import { checkAppletWithSizes } from './checker';
 import { getGithubClient } from './github-bind';
+import { registerAppletTables, SchemaChangeError, type ManifestTable } from './data';
 
 const enc = new TextEncoder();
 
@@ -169,6 +170,19 @@ async function submitApplet(env: McpEnv, agent: { id: number; name: string }, ar
   if (!appletRowId) {
     const ins = await env.DB.prepare(`INSERT INTO t_applets (name, path, status, entry) VALUES (?, ?, 'testing', ?)`).bind(displayName, appletId, entry).run();
     appletRowId = ins.meta.last_row_id as number;
+  }
+
+  // 数据表注册/演进（Critical #1：生产链路必须建物理表与清单快照）
+  try {
+    const manifest = JSON.parse(files['applet.json']);
+    if (Array.isArray(manifest.tables)) {
+      await registerAppletTables(env.DB, appletId, manifest.tables as ManifestTable[]);
+    }
+  } catch (e) {
+    if (e instanceof SchemaChangeError) {
+      return toolDenied('SCHEMA_CHANGE', { message: e.message, issues: [{ level: 'error', rule: 'manifest.evolution', file: 'applet.json', message: e.message }] });
+    }
+    throw e;
   }
 
   const author = { name: `applet-agent[${agent.id}]`, email: `${agent.name}@agents.noreply.applet-platform` };

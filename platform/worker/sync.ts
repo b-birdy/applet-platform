@@ -1,6 +1,7 @@
 // 同步器：main 的 applets/ 树 ↔ t_applets 注册表；PR 分支 → R2 preview
 import type { GitHubClient } from './github';
 import { checkApplet } from './checker';
+import { registerAppletTables, type ManifestTable } from './data';
 
 export type SyncEnv = {
   DB: D1Database;
@@ -42,9 +43,27 @@ async function pullFiles(env: SyncEnv, ref: string, slug: string, destPrefix: st
   return count;
 }
 
-/** 单应用刷新：拉 main 上该 applet 的文件到 prod + 跑 checker 存报告 */
+/** 单应用刷新：拉 main 上该 applet 的文件到 prod + 注册/演进数据表 + 跑 checker 存报告 */
 export async function refreshApplet(env: SyncEnv, slug: string): Promise<void> {
   await pullFiles(env, 'main', slug, 'prod');
+  // 数据表注册/演进（幂等）；破坏性变更只记报告不崩同步
+  const raw = await env.GITHUB.getContent('main', `applets/${slug}/applet.json`);
+  if (raw) {
+    try {
+      const manifest = JSON.parse(new TextDecoder().decode(raw));
+      if (Array.isArray(manifest.tables)) {
+        await registerAppletTables(env.DB, slug, manifest.tables as ManifestTable[]);
+      }
+    } catch (e) {
+      if (e instanceof Error && e.name === 'SchemaChangeError') {
+        await env.DB.prepare(`INSERT INTO t_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`)
+          .bind(`check_report.${slug}`, JSON.stringify([{ level: 'error', rule: 'manifest.evolution', file: 'applet.json', message: e.message }]))
+          .run();
+      } else {
+        console.error(`refreshApplet ${slug}: manifest register failed:`, e);
+      }
+    }
+  }
   const tree = await env.GITHUB.getTree('main');
   const files = new Map<string, string>();
   for (const f of tree) {
@@ -72,13 +91,11 @@ export async function syncOnce(env: SyncEnv): Promise<{ added: string[]; missing
     const manifestRaw = await env.GITHUB.getContent('main', `applets/${slug}/applet.json`);
     let name = slug;
     let entry: string | null = null;
-    let tablesJson: unknown[] = [];
     if (manifestRaw) {
       try {
         const m = JSON.parse(new TextDecoder().decode(manifestRaw));
         name = m.name ?? slug;
         entry = m.entry ?? null;
-        tablesJson = m.tables ?? [];
       } catch { /* 清单坏也先注册，报告会指出 */ }
     }
     await env.DB.prepare(`INSERT INTO t_applets (name, path, status, entry) VALUES (?, ?, 'testing', ?)`).bind(name, slug, entry).run();

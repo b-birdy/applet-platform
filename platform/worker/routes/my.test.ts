@@ -137,6 +137,15 @@ describe('admin sees all applets in /api/my/applets', () => {
   });
 });
 
+describe('signing key fail-closed (Critical #2)', () => {
+  it('production code has no insecure fallback for MCP_SIGNING_KEY', async () => {
+    const data = (await import('../routes/data?raw')).default as string;
+    const my = (await import('../routes/my?raw')).default as string;
+    expect(data).not.toContain('insecure-dev-key');
+    expect(my).not.toContain('insecure-dev-key');
+  });
+});
+
 describe('sandbox assertions (static)', () => {
   it('AppFrame sandbox excludes allow-same-origin', async () => {
     const src = await import('../../src/views/applet/AppFrame.vue?raw');

@@ -7,13 +7,18 @@ import { getQuota } from '../settings';
 import { verifyAppletToken } from '../tokens';
 import { logAudit } from '../audit';
 
+const enc = new TextEncoder();
+
 type DataEnv = { Bindings: { DB: D1Database; MCP_SIGNING_KEY?: string } };
 
 async function resolveUser(c: any, appletId: string): Promise<AuthInfo | 'SCOPE' | null> {
   const authHeader = c.req.header('authorization');
   if (authHeader?.startsWith('Bearer ')) {
+    // fail closed：Secret 未配置时拒绝一切 token（防伪造密钥绕过隔离）
+    const key = c.env.MCP_SIGNING_KEY;
+    if (!key) return null;
     const token = authHeader.slice(7);
-    const payload = await verifyAppletToken(token, c.env.MCP_SIGNING_KEY ?? 'insecure-dev-key');
+    const payload = await verifyAppletToken(token, key);
     if (!payload) return null;
     // 签名有效但 applet 不符 → 作用域错误（403），不是未认证
     if (payload.appletId !== appletId) return 'SCOPE';
@@ -84,14 +89,25 @@ dataRoutes.get('/api/data/:appletId/:table', async (c) => {
   return c.json({ rows: rows.results, total: total?.n ?? 0 });
 });
 
-// 写入前配额检查
-async function checkQuota(c: any, appletId: string, userId: number, table: string, incoming: number) {
+// 写入前配额检查（按用户计——spec 承诺每用户配额，非全表）
+// bytes: 白名单列拼接 LENGTH 聚合（列名已经白名单校验，值永远 bind）；incomingBytes 由调用方估
+async function checkQuota(c: any, appletId: string, userId: number, table: string, allowed: Set<string>, incoming: number, incomingBytes = 0) {
   const quota = await getQuota(c.env.DB, appletId);
   const tbl = appletTable(appletId, table);
-  const count = (await c.env.DB.prepare(`SELECT COUNT(*) AS n FROM ${tbl}`).first()) as { n: number } | null;
+  const count = (await c.env.DB.prepare(`SELECT COUNT(*) AS n FROM ${tbl} WHERE user_id = ?`).bind(userId).first()) as { n: number } | null;
   const used = count?.n ?? 0;
+  const cols = [...allowed].filter((cl) => cl !== 'id' && cl !== 'user_id' && cl !== 'created_at');
+  let usedBytes = 0;
+  if (cols.length > 0) {
+    const expr = cols.map((cl) => `LENGTH(COALESCE("${cl}", ''))`).join(' + ');
+    const row = (await c.env.DB.prepare(`SELECT COALESCE(SUM(${expr}), 0) AS b FROM ${tbl} WHERE user_id = ?`).bind(userId).first()) as { b: number } | null;
+    usedBytes = row?.b ?? 0;
+  }
   if (used + incoming > quota.rows) {
-    return c.json({ error: 'QUOTA_EXCEEDED', used: { rows: used, bytes: 0 }, limit: quota }, 413);
+    return c.json({ error: 'QUOTA_EXCEEDED', used: { rows: used, bytes: usedBytes }, limit: quota }, 413);
+  }
+  if (usedBytes + incomingBytes > quota.bytes) {
+    return c.json({ error: 'QUOTA_EXCEEDED', used: { rows: used, bytes: usedBytes }, limit: quota }, 413);
   }
   return null;
 }
@@ -131,7 +147,8 @@ dataRoutes.post('/api/data/:appletId/:table', async (c) => {
   const bad = validateRequired(allowed, values);
   if (bad) return c.json({ error: 'REQUIRED_FIELD', field: bad }, 400);
 
-  const q = await checkQuota(c, appletId, auth.userId, table, 1);
+  const incomingBytes = enc.encode(JSON.stringify(values)).byteLength;
+  const q = await checkQuota(c, appletId, auth.userId, table, allowed, 1, incomingBytes);
   if (q) return q;
 
   const keys = Object.keys(values);
@@ -201,7 +218,8 @@ dataRoutes.post('/api/data/:appletId/:table/batch', async (c) => {
     if (Object.keys(values).length === 0) return c.json({ error: 'BAD_REQUEST' }, 400);
   }
 
-  const q = await checkQuota(c, appletId, auth.userId, table, body.rows.length);
+  const incomingBytes = body.rows.reduce((n: number, r: any) => n + enc.encode(JSON.stringify(filterColumns(allowed, r))).byteLength, 0);
+  const q = await checkQuota(c, appletId, auth.userId, table, allowed, body.rows.length, incomingBytes);
   if (q) return q;
 
   // 事务：全部成功或全部回滚

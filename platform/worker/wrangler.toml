@@ -4,12 +4,12 @@ compatibility_date = "2026-10-01"
 
 [[d1_databases]]
 binding = "DB"
-database_name = "applet-platform"
+database_name = "applet-platform-db"
 database_id = "placeholder" # TODO(deploy): replace with real D1 database_id
 
 [[r2_buckets]]
 binding = "ASSETS"
-bucket_name = "applet-assets"
+bucket_name = "applet-platform-assets"
 
 [triggers]
 crons = ["*/5 * * * *"]
