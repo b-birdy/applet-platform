@@ -91,14 +91,16 @@ export async function syncOnce(env: SyncEnv): Promise<{ added: string[]; missing
     const manifestRaw = await env.GITHUB.getContent('main', `applets/${slug}/applet.json`);
     let name = slug;
     let entry: string | null = null;
+    let display = 'embed';
     if (manifestRaw) {
       try {
         const m = JSON.parse(new TextDecoder().decode(manifestRaw));
         name = m.name ?? slug;
         entry = m.entry ?? null;
+        if (m.display === 'new_tab') display = 'new_tab';
       } catch { /* 清单坏也先注册，报告会指出 */ }
     }
-    await env.DB.prepare(`INSERT INTO t_applets (name, path, status, entry) VALUES (?, ?, 'testing', ?)`).bind(name, slug, entry).run();
+    await env.DB.prepare(`INSERT INTO t_applets (name, path, status, entry, display) VALUES (?, ?, 'testing', ?, ?)`).bind(name, slug, entry, display).run();
     await refreshApplet(env, slug);
     added.push(slug);
   }

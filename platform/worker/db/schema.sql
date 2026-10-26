@@ -29,7 +29,8 @@ CREATE TABLE t_applets (
   entry TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   sync_commit TEXT,
-  missing INTEGER NOT NULL DEFAULT 0
+  missing INTEGER NOT NULL DEFAULT 0,
+  display TEXT NOT NULL DEFAULT 'embed'
 );
 CREATE UNIQUE INDEX idx_applets_path ON t_applets(path);
 

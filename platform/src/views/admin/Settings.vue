@@ -88,7 +88,9 @@ async function syncNow() {
       </p>
       <p class="hint">最近同步：{{ github.lastSync ?? '从未' }}</p>
       <p class="hint">平台每 5 分钟自动同步 main 分支；PR 合并后立即同步。也可手动触发：</p>
-      <el-button :loading="syncing" @click="syncNow">立即同步</el-button>
+      <el-tooltip content="立即拉取仓库 applets/ 目录，识别新小程序或标记已消失的应用" placement="top">
+        <el-button :loading="syncing" @click="syncNow">立即同步</el-button>
+      </el-tooltip>
     </section>
   </div>
 </template>

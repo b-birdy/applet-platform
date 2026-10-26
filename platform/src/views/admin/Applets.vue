@@ -22,7 +22,8 @@ const reportIssues = ref<{ level: string; rule: string; file: string; message: s
 
 const statusLabel: Record<string, string> = { testing: '测试', enabled: '启用', disabled: '停用' };
 const statusClass: Record<string, string> = { testing: 'warn', enabled: 'ok', disabled: 'off' };
-const statusTag: Record<string, string> = { testing: 'warning', enabled: 'success', disabled: 'info' };
+const statusRowClass: Record<string, string> = { testing: 'row-testing', enabled: 'row-enabled', disabled: 'row-disabled' };
+const displayLabel: Record<string, string> = { embed: '内嵌展示', new_tab: '新标签页' };
 
 async function load() {
   const [a, u] = await Promise.all([
@@ -34,18 +35,14 @@ async function load() {
 }
 onMounted(load);
 
-function statusTarget(a: Applet): string[] {
-  switch (a.status) {
-    case 'testing': return ['启用', 'disabled:停用'];
-    case 'enabled': return ['testing:转测试', '停用'];
-    case 'disabled': return ['启用'];
-    default: return [];
-  }
-}
+const TRANSITIONS: Record<string, { to: string; label: string }[]> = {
+  testing: [{ to: 'enabled', label: '启用' }, { to: 'disabled', label: '停用' }],
+  enabled: [{ to: 'testing', label: '转回测试' }, { to: 'disabled', label: '停用' }],
+  disabled: [{ to: 'enabled', label: '启用' }],
+};
 
-async function changeStatus(a: Applet, spec: string) {
-  const [label, status] = spec.split(':');
-  const to = status ?? (label === '启用' ? 'enabled' : label === '停用' ? 'disabled' : 'testing');
+async function changeStatus(a: Applet, to: string) {
+  const label = statusLabel[to] ?? to;
   await ElMessageBox.confirm(
     `将「${a.name}」状态从「${statusLabel[a.status]}」变更为「${label}」？`,
     '状态变更',
@@ -88,20 +85,36 @@ async function submitAuthorize() {
   }
 }
 
-async function editApplet(a: Applet) {
-  const { value } = await ElMessageBox.prompt(
-    '格式：名称[,图标][,每用户行数配额]（后两项留空保持不变）',
-    `编辑 — ${a.name}`,
-    { inputPlaceholder: `${a.name},${a.icon ?? ''},10000`, confirmButtonText: '保存', cancelButtonText: '取消' }
-  );
-  const [name, icon, quota] = value.split(',').map((s: string) => s.trim());
+// 编辑对话框（改进 8）：名称/图标/展示方式/专属配额
+const editVisible = ref(false);
+const editTarget = ref<Applet | null>(null);
+const editForm = ref({ name: '', icon: '', display: 'embed', quotaRows: undefined as number | undefined, quotaBytes: undefined as number | undefined });
+
+function openEdit(a: Applet) {
+  editTarget.value = a;
+  editForm.value = { name: a.name, icon: a.icon ?? '', display: (a as any).display ?? 'embed', quotaRows: undefined, quotaBytes: undefined };
+  editVisible.value = true;
+}
+
+async function submitEdit() {
+  const a = editTarget.value!;
+  const f = editForm.value;
   const body: any = {};
-  if (name) body.name = name;
-  if (icon) body.icon = icon;
-  if (quota && !Number.isNaN(Number(quota))) body.quota = { rows: Number(quota) };
-  await api(`/api/admin/applets/${a.path}`, { method: 'PUT', body });
-  ElMessage.success('已保存（专属配额立即生效）');
-  await load();
+  if (f.name && f.name !== a.name) body.name = f.name;
+  if (f.icon && f.icon !== (a.icon ?? '')) body.icon = f.icon;
+  if (f.display) body.display = f.display;
+  const quota: any = {};
+  if (f.quotaRows !== undefined && !Number.isNaN(Number(f.quotaRows))) quota.rows = Number(f.quotaRows);
+  if (f.quotaBytes !== undefined && !Number.isNaN(Number(f.quotaBytes))) quota.bytes = Number(f.quotaBytes);
+  if (Object.keys(quota).length) body.quota = quota;
+  try {
+    await api(`/api/admin/applets/${a.path}`, { method: 'PUT', body });
+    editVisible.value = false;
+    ElMessage.success('已保存');
+    await load();
+  } catch (e) {
+    ElMessage.error(e instanceof ApiError ? e.code : '保存失败');
+  }
 }
 
 async function checkReport(a: Applet) {
@@ -166,7 +179,7 @@ function onWizardCreated() {
       <el-button type="primary" @click="wizardVisible = true">＋ 新增小程序</el-button>
     </header>
 
-    <el-table :data="applets" stripe>
+    <el-table :data="applets" stripe :row-class-name="({ row }: any) => statusRowClass[row.status] ?? ''">
       <el-table-column label="应用" min-width="200">
         <template #default="{ row }">
           <div class="appname">
@@ -188,6 +201,11 @@ function onWizardCreated() {
       </el-table-column>
       <el-table-column prop="authorized_users" label="授权用户" width="90" align="center" />
       <el-table-column prop="tables" label="数据表" width="80" align="center" />
+      <el-table-column label="展示方式" width="90" align="center">
+        <template #default="{ row }">
+          <span class="muted">{{ displayLabel[(row as any).display] ?? '内嵌展示' }}</span>
+        </template>
+      </el-table-column>
       <el-table-column label="PR" width="80" align="center">
         <template #default="{ row }">
           <el-tag v-if="row.open_prs" type="warning" size="small">待合并</el-tag>
@@ -196,16 +214,20 @@ function onWizardCreated() {
       </el-table-column>
       <el-table-column label="操作" width="420" align="right">
         <template #default="{ row }">
-          <el-dropdown v-if="statusTarget(row).length" trigger="click" @command="(cmd: string) => changeStatus(row, cmd)">
+          <el-dropdown v-if="TRANSITIONS[row.status]?.length" trigger="click" @command="(to: string) => changeStatus(row, to)">
             <el-button size="small">状态</el-button>
             <template #dropdown>
               <el-dropdown-menu>
-                <el-dropdown-item v-for="cmd in statusTarget(row)" :key="cmd" :command="cmd">{{ cmd.split(':')[0] }}</el-dropdown-item>
+                <el-dropdown-item v-for="t in TRANSITIONS[row.status]" :key="t.to" :command="t.to">{{ t.label }}</el-dropdown-item>
               </el-dropdown-menu>
             </template>
           </el-dropdown>
-          <el-button size="small" @click="openAuthorizeDialog(row)">授权</el-button>
-          <el-button size="small" @click="editApplet(row)">编辑</el-button>
+          <el-tooltip content="选择哪些用户可以使用该小程序" placement="top">
+            <el-button size="small" @click="openAuthorizeDialog(row)">授权</el-button>
+          </el-tooltip>
+          <el-tooltip content="名称/图标/展示方式/本应用专属配额" placement="top">
+            <el-button size="small" @click="openEdit(row)">编辑</el-button>
+          </el-tooltip>
           <el-button v-if="row.open_prs" size="small" type="primary" @click="mergePR(row)">合并 PR</el-button>
           <el-button size="small" @click="checkReport(row)">检查报告</el-button>
           <el-button size="small" type="danger" plain @click="remove(row)">删除</el-button>
@@ -222,12 +244,52 @@ function onWizardCreated() {
     <el-dialog v-model="authDialog" :title="`授权 — ${authTarget?.name}`" width="480px">
       <p class="hint">勾选要授权的用户（当前已授权 {{ authTarget?.authorized_users }} 人）：</p>
       <el-select v-model="selected" multiple filterable placeholder="选择用户" style="width: 100%">
+        <el-checkbox
+          :model-value="selected.length === users.length && users.length > 0"
+          :indeterminate="selected.length > 0 && selected.length < users.length"
+          @change="selected = ($event as any) ? users.map((u: User) => u.id) : []"
+          style="margin: 0 0 6px 4px">全选（{{ users.length }}）</el-checkbox>
         <el-option v-for="u in users" :key="u.id" :label="u.username" :value="u.id" />
       </el-select>
       <el-switch v-model="selectedAllowed" active-text="允许" inactive-text="拒绝" style="margin-top: 12px" />
       <template #footer>
         <el-button @click="authDialog = false">取消</el-button>
         <el-button type="primary" :disabled="selected.length === 0" @click="submitAuthorize">应用授权</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 编辑对话框 -->
+    <el-dialog v-model="editVisible" :title="`编辑 — ${editTarget?.name}`" width="480px">
+      <el-form label-width="90px" @submit.prevent>
+        <el-form-item label="名称">
+          <el-input v-model="editForm.name" />
+        </el-form-item>
+        <el-form-item label="图标">
+          <el-input v-model="editForm.icon" placeholder="emoji，如 📚" style="width: 160px" />
+        </el-form-item>
+        <el-form-item label="展示方式">
+          <el-radio-group v-model="editForm.display">
+            <el-tooltip content="点击宫格后在平台页面内的框架中打开" placement="top">
+              <el-radio value="embed">内嵌展示</el-radio>
+            </el-tooltip>
+            <el-tooltip content="点击宫格后在浏览器新标签页打开" placement="top">
+              <el-radio value="new_tab">新标签页</el-radio>
+            </el-tooltip>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item label="专属配额">
+          <div class="quota-grid">
+            <el-input-number v-model="editForm.quotaRows" :min="100" :max="1000000" :step="1000" placeholder="行数" controls-position="right" />
+            <span class="muted">行 / 用户（留空用全局值）</span>
+            <el-input-number v-model="editForm.quotaBytes" :min="1048576" :max="1073741824" :step="1048576" placeholder="字节" controls-position="right" />
+            <span class="muted">字节 / 用户（留空用全局值）</span>
+          </div>
+        </el-form-item>
+      </el-form>
+      <p class="hint" style="margin: 0 0 10px">专属配额：本应用每个用户可存的数据上限，覆盖系统设置里的全局默认值。</p>
+      <template #footer>
+        <el-button @click="editVisible = false">取消</el-button>
+        <el-button type="primary" @click="submitEdit">保存</el-button>
       </template>
     </el-dialog>
 
@@ -252,6 +314,11 @@ h1 { font-size: 17px; margin: 0; }
 .appname .ic { width: 28px; height: 28px; border-radius: 7px; background: var(--accent-weak); color: var(--accent); display: flex; align-items: center; justify-content: center; font-size: 15px; }
 .appname .path { font-size: 11px; color: var(--ink-3); font-family: ui-monospace, monospace; }
 .muted { color: var(--ink-3); }
+.row-testing td { background: color-mix(in srgb, var(--warn) 8%, transparent) !important; }
+.row-enabled td { background: color-mix(in srgb, var(--ok) 6%, transparent) !important; }
+.row-disabled td { background: color-mix(in srgb, var(--off) 8%, transparent) !important; }
+.quota-grid { display: grid; grid-template-columns: 160px 1fr; gap: 6px 10px; align-items: center; }
+.hint { font-size: 12px; color: var(--ink-3); }
 .hint { font-size: 13px; color: var(--ink-2); margin-top: 0; }
 .issues { list-style: none; padding: 0; margin: 0; }
 .issues li { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; margin-bottom: 8px; font-size: 13px; }

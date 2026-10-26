@@ -29,7 +29,13 @@ onMounted(async () => {
 
 function open(a: Applet) {
   // admin 可预览 testing/disabled（iframe 路径由 worker 鉴权），普通用户仅 enabled
-  if (auth.isAdmin || a.status === 'enabled') router.push(`/app/${a.path}`);
+  if (!(auth.isAdmin || a.status === 'enabled')) return;
+  if ((a as any).display === 'new_tab') {
+    // 新标签页：仍然走平台的 /app/ 路径（鉴权+token 注入逻辑相同）
+    window.open(`/app/${a.path}/`, '_blank');
+  } else {
+    router.push(`/app/${a.path}`);
+  }
 }
 </script>
 
@@ -64,13 +70,22 @@ h1 { font-size: 17px; margin: 0; }
 .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 12px; max-width: 640px; }
 .tile {
   display: flex; flex-direction: column; align-items: center; gap: 8px;
-  background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
-  padding: 16px 10px 12px; cursor: pointer; font: inherit; color: inherit;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-md);
+  padding: 18px 10px 14px; cursor: pointer; font: inherit; color: inherit;
+  box-shadow: var(--shadow-sm); transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
 }
-.tile:hover { border-color: var(--accent); }
+.tile:hover { transform: translateY(-3px); box-shadow: var(--shadow-md); border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+.tile:active { transform: translateY(-1px); }
 .tile.dim { opacity: .55; }
-.ic { width: 44px; height: 44px; border-radius: 11px; background: var(--accent-weak); color: var(--accent); display: flex; align-items: center; justify-content: center; font-size: 22px; }
-.tile.add { border-style: dashed; background: transparent; }
+.ic {
+  width: 48px; height: 48px; border-radius: 13px; color: var(--accent);
+  background: linear-gradient(135deg, var(--accent-weak), color-mix(in srgb, var(--accent) 14%, var(--panel)));
+  display: flex; align-items: center; justify-content: center; font-size: 24px;
+  transition: transform .15s ease;
+}
+.tile:hover .ic { transform: scale(1.08); }
+.tile.add { border-style: dashed; background: transparent; box-shadow: none; }
+.tile.add:hover { transform: translateY(-3px); border-color: var(--accent); }
 .ic.plus { background: transparent; border: 1.5px dashed var(--line-strong); color: var(--ink-3); font-size: 18px; }
 .tile b { font-size: 13px; font-weight: 600; }
 .empty { color: var(--ink-3); margin-top: 40px; text-align: center; }

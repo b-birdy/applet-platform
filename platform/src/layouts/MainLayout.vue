@@ -45,14 +45,16 @@ async function logout() {
 
       <nav>
         <div class="sec" v-show="!collapsed">通用</div>
-        <router-link v-for="item in userItems" :key="item.path" :to="item.path" class="nav" active-class="on">
+        <router-link v-for="item in userItems" :key="item.path" :to="item.path" class="nav"
+          :class="{ on: item.path === '/' ? route.path === '/' : route.path.startsWith(item.path) }">
           <span class="ico">{{ item.icon }}</span>
           <span v-show="!collapsed">{{ item.label }}</span>
         </router-link>
 
         <template v-if="isAdmin">
           <div class="sec" v-show="!collapsed">管理员</div>
-          <router-link v-for="item in adminItems" :key="item.path" :to="item.path" class="nav" active-class="on">
+          <router-link v-for="item in adminItems" :key="item.path" :to="item.path" class="nav"
+            :class="{ on: route.path.startsWith(item.path) }">
             <span class="ico">{{ item.icon }}</span>
             <span v-show="!collapsed">{{ item.label }}</span>
           </router-link>
@@ -79,12 +81,12 @@ async function logout() {
 <style scoped>
 .shell { display: flex; height: 100%; }
 .side {
-  width: 196px; flex: none; display: flex; flex-direction: column;
+  width: 200px; flex: none; display: flex; flex-direction: column;
   background: var(--panel); border-right: 1px solid var(--line); padding: 14px 10px;
-  transition: width .15s ease;
+  transition: width .18s cubic-bezier(.4, 0, .2, 1);
 }
 .side.collapsed { width: 48px; padding: 14px 6px; }
-.wordmark { padding: 2px 8px 14px; cursor: pointer; }
+.wordmark { padding: 4px 8px 16px; cursor: pointer; border-bottom: 1px solid var(--line); margin-bottom: 8px; }
 nav { flex: 1; display: flex; flex-direction: column; gap: 2px; }
 .sec { font-size: 11px; color: var(--ink-3); padding: 10px 8px 4px; }
 .nav {
@@ -92,16 +94,19 @@ nav { flex: 1; display: flex; flex-direction: column; gap: 2px; }
   color: var(--ink-2); font-size: 13px; text-decoration: none; white-space: nowrap;
   border: none; background: none; font-family: inherit; cursor: pointer; text-align: left;
 }
-.nav:hover { background: var(--canvas); }
-.nav.on { background: var(--accent-weak); color: var(--accent); font-weight: 600; }
+.nav { transition: background .12s ease, color .12s ease; }
+.nav:hover { background: var(--accent-soft); color: var(--ink); }
+.nav.on { background: linear-gradient(135deg, var(--accent-weak), color-mix(in srgb, var(--accent) 16%, var(--panel))); color: var(--accent); font-weight: 600; box-shadow: inset 2.5px 0 0 var(--accent); border-radius: 6px 10px 10px 6px; }
 .ico { width: 16px; text-align: center; flex: none; }
 .foot { border-top: 1px solid var(--line); padding-top: 8px; display: flex; flex-direction: column; gap: 2px; }
 .as-btn { width: 100%; }
 .fold {
-  position: fixed; left: var(--fold-x, 196px); top: 50%; transform: translateY(-50%);
+  position: fixed; left: var(--fold-x, 200px); top: 50%; transform: translateY(-50%);
   width: 18px; height: 44px; border: 1px solid var(--line); border-left: none;
   background: var(--panel); color: var(--ink-3); cursor: pointer; z-index: 10;
-  border-radius: 0 6px 6px 0;
+  border-radius: 0 8px 8px 0; box-shadow: var(--shadow-sm);
+  transition: left .18s cubic-bezier(.4, 0, .2, 1), color .12s ease;
 }
+.fold:hover { color: var(--accent); }
 .main { flex: 1; min-width: 0; overflow: auto; padding: 18px 22px; }
 </style>

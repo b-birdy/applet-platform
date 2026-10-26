@@ -112,7 +112,9 @@ async function submitGrant() {
   <div>
     <header class="head">
       <h1>Agent 认证</h1>
-      <el-button type="primary" @click="generateCode">生成准入码</el-button>
+      <el-tooltip content="生成一次性接入码，交给你的 AI agent 连接 MCP 时使用，24 小时有效" placement="bottom">
+        <el-button type="primary" @click="generateCode">生成准入码</el-button>
+      </el-tooltip>
     </header>
 
     <el-alert v-if="lastCode" type="success" :closable="false" class="code-box">

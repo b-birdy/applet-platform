@@ -156,8 +156,11 @@ async function submitApplet(env: McpEnv, agent: { id: number; name: string }, ar
   const gh = getGithubClient(undefined);
   const files = args?.files ?? {};
   let entry: string | null = null;
+  let display = 'embed';
   try {
-    entry = JSON.parse(files['applet.json']).entry ?? null;
+    const m = JSON.parse(files['applet.json']);
+    entry = m.entry ?? null;
+    if (m.display === 'new_tab') display = 'new_tab';
   } catch { /* checker 已验过清单 */ }
 
   const fileMap = new Map<string, string | { contentBase64: string }>();
@@ -168,7 +171,7 @@ async function submitApplet(env: McpEnv, agent: { id: number; name: string }, ar
   // 无注册行则建（首个提交者建立归属）
   let appletRowId = existing?.id;
   if (!appletRowId) {
-    const ins = await env.DB.prepare(`INSERT INTO t_applets (name, path, status, entry) VALUES (?, ?, 'testing', ?)`).bind(displayName, appletId, entry).run();
+    const ins = await env.DB.prepare(`INSERT INTO t_applets (name, path, status, entry, display) VALUES (?, ?, 'testing', ?, ?)`).bind(displayName, appletId, entry, display).run();
     appletRowId = ins.meta.last_row_id as number;
   }
 
@@ -178,6 +181,7 @@ async function submitApplet(env: McpEnv, agent: { id: number; name: string }, ar
     if (Array.isArray(manifest.tables)) {
       await registerAppletTables(env.DB, appletId, manifest.tables as ManifestTable[]);
     }
+    await env.DB.prepare(`UPDATE t_applets SET entry = ?, display = ? WHERE path = ?`).bind(entry, display, appletId).run();
   } catch (e) {
     if (e instanceof SchemaChangeError) {
       return toolDenied('SCHEMA_CHANGE', { message: e.message, issues: [{ level: 'error', rule: 'manifest.evolution', file: 'applet.json', message: e.message }] });

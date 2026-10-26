@@ -9,6 +9,7 @@ export const myRoutes = new Hono<{ Bindings: { DB: D1Database; MCP_SIGNING_KEY?:
 
 myRoutes.use('/api/applet-token', requireAuth());
 myRoutes.use('/api/my/*', requireAuth());
+myRoutes.use('/api/profile', requireAuth());
 
 // 已授权 applet 的 slug 集合（admin 全通过）
 async function authorizedSlugs(c: any): Promise<Set<string>> {

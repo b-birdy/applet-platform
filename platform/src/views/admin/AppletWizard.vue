@@ -2,7 +2,7 @@
 // 新增小程序五步向导（D16）：①基本信息 ②开发提示词 ③自检提示词 ④问题清单 ⑤上传提示词 → 轮询识别
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import { ElMessage } from 'element-plus';
-import { devPrompt, checkPrompt, uploadPrompt } from '../../data/prompts';
+import { devPrompt, checkPrompt, uploadPrompt, existingAppletPrompt } from '../../data/prompts';
 import { api } from '../../api/client';
 
 const emit = defineEmits<{ created: [] }>();
@@ -18,7 +18,8 @@ const idOk = computed(() => idRe.test(form.value.id));
 const nameOk = computed(() => form.value.name.trim().length > 0);
 const canNext = computed(() => (step.value === 0 ? idOk.value && nameOk.value : true));
 
-const dev = computed(() => devPrompt(form.value, mcpUrl));
+const hasExisting = ref(false); // 已开发完成的成品 → 显示接入式提示词
+const dev = computed(() => (hasExisting.value ? existingAppletPrompt(form.value, mcpUrl) : devPrompt(form.value, mcpUrl)));
 const check = computed(() => checkPrompt(form.value, mcpUrl));
 const upload = computed(() => uploadPrompt(form.value, mcpUrl));
 
@@ -76,6 +77,9 @@ function startPolling() {
 
     <!-- 第 1 步：基本信息 -->
     <section v-if="step === 0" class="body">
+      <el-alert type="info" :closable="false" style="margin-bottom: 14px">
+        <el-checkbox v-model="hasExisting">这个小程序已经开发完成（提示词将改为「接入已有代码」版本）</el-checkbox>
+      </el-alert>
       <el-form label-width="90px">
         <el-form-item label="小程序 ID" :error="form.id && !idOk ? '小写字母开头，只能含小写字母、数字、连字符' : ''">
           <el-input v-model="form.id" placeholder="word-cards" />
@@ -92,7 +96,7 @@ function startPolling() {
 
     <!-- ②开发 ③自检 ⑤上传：提示词卡片 -->
     <section v-if="step === 1 || step === 2 || step === 4" class="body">
-      <h3>{{ step === 1 ? '把下面的提示词复制给你的 agent（开发）' : step === 2 ? '复制提示词让 agent 自检并修正' : '复制提示词让 agent 上传（提交 PR）' }}</h3>
+      <h3>{{ step === 1 ? (hasExisting ? '复制提示词给你的 agent（接入已有小程序）' : '把下面的提示词复制给你的 agent（开发）') : step === 2 ? '复制提示词让 agent 自检并修正' : '复制提示词让 agent 上传（提交 PR）' }}</h3>
       <div class="prompt-card">
         <pre>{{ step === 1 ? dev : step === 2 ? check : upload }}</pre>
       </div>

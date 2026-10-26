@@ -11,12 +11,15 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* 状态灯（圆点+文字） */
+/* 状态灯（圆点+文字，带同色光晕） */
 .st { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--ink-2); }
 .st i { width: 7px; height: 7px; border-radius: 50%; flex: none; }
-.st.ok i { background: var(--ok); }
-.st.warn i { background: var(--warn); }
-.st.off i { background: var(--off); }
+.st.ok i { background: var(--ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 18%, transparent); }
+.st.warn i { background: var(--warn); box-shadow: 0 0 0 3px color-mix(in srgb, var(--warn) 18%, transparent); }
+.st.off i { background: var(--off); box-shadow: 0 0 0 3px color-mix(in srgb, var(--off) 15%, transparent); }
+
+/* 卡片基线：统一浮起层次 */
+.el-card, .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-md); box-shadow: var(--shadow-sm); }
 
 /* 字标 */
 .wordmark { display: flex; align-items: center; gap: 9px; }

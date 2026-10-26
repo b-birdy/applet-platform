@@ -58,14 +58,21 @@ async function submit() {
 </template>
 
 <style scoped>
-.page { position: relative; height: 100%; display: flex; align-items: center; justify-content: center; }
+.page { position: relative; height: 100%; display: flex; align-items: center; justify-content: center; overflow: hidden; }
 .grid-bg { position: absolute; inset: 0; }
-.card {
-  position: relative; width: 320px; background: var(--panel);
-  border: 1px solid var(--line-strong); border-radius: 10px; padding: 28px 26px;
-  box-shadow: 0 1px 2px rgba(28, 36, 34, .05);
+/* 品牌光斑：右上/左下两团苍青柔光 */
+.page::before, .page::after {
+  content: ""; position: absolute; border-radius: 50%; filter: blur(80px); pointer-events: none;
 }
-.wordmark { margin-bottom: 20px; }
+.page::before { width: 420px; height: 420px; right: -120px; top: -120px; background: color-mix(in srgb, var(--accent) 16%, transparent); }
+.page::after { width: 360px; height: 360px; left: -100px; bottom: -120px; background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.card {
+  position: relative; width: 340px; background: var(--panel);
+  border: 1px solid var(--line); border-radius: var(--radius-lg); padding: 32px 30px;
+  box-shadow: var(--shadow-lg);
+  z-index: 1;
+}
+.wordmark { margin-bottom: 24px; justify-content: center; }
 label { display: block; margin-bottom: 12px; }
 label span { display: block; font-size: 12px; color: var(--ink-2); margin-bottom: 4px; }
 input {
@@ -76,9 +83,13 @@ input {
 input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-weak); }
 .err { color: var(--danger); font-size: 12px; margin: 0 0 10px; }
 .btn {
-  width: 100%; height: 34px; border-radius: 6px; border: 1px solid var(--accent);
-  background: var(--accent); color: #fff; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+  width: 100%; height: 38px; border-radius: 8px; border: none;
+  background: linear-gradient(135deg, var(--accent), var(--accent-hover)); color: #fff;
+  font: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
+  transition: filter .12s ease, transform .12s ease; box-shadow: var(--shadow-sm);
 }
+.btn:hover:not(:disabled) { filter: brightness(1.06); }
+.btn:active:not(:disabled) { transform: translateY(1px); }
 .btn:disabled { opacity: .6; cursor: default; }
 .foot { margin: 14px 0 0; font-size: 12px; color: var(--ink-3); text-align: center; }
 </style>

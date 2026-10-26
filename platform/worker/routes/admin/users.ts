@@ -45,8 +45,11 @@ adminUserRoutes.get('/api/admin/users', async (c) => {
 
 adminUserRoutes.post('/api/admin/users', async (c) => {
   const body = await c.req.json<{ username?: string; password?: string; nickname?: string; role?: string }>().catch(() => null);
-  if (!body?.username || !body.password) return c.json({ error: 'BAD_REQUEST' }, 400);
-  if (body.password.length < 8) return c.json({ error: 'WEAK_PASSWORD' }, 400);
+  if (!body?.username) return c.json({ error: 'BAD_REQUEST' }, 400);
+  // 密码可省略：服务端生成随机密码并随响应返回一次
+  const generated = !body.password;
+  const password = body.password ?? ('ap-' + Array.from(crypto.getRandomValues(new Uint8Array(8)), (b) => b.toString(16).padStart(2, '0')).join(''));
+  if (password.length < 8) return c.json({ error: 'WEAK_PASSWORD' }, 400);
   const role = body.role ?? 'user';
   if (!(role in ROLE_ORDER)) return c.json({ error: 'BAD_ROLE' }, 400);
 
@@ -56,14 +59,14 @@ adminUserRoutes.post('/api/admin/users', async (c) => {
   const dup = await c.env.DB.prepare(`SELECT id FROM t_users WHERE username = ?`).bind(body.username).first();
   if (dup) return c.json({ error: 'DUPLICATE' }, 409);
 
-  const hash = await hashPassword(body.password);
+  const hash = await hashPassword(password);
   const result = await c.env.DB.prepare(
     `INSERT INTO t_users (username, password_hash, role, nickname) VALUES (?, ?, ?, ?)`
   ).bind(body.username, hash, role, body.nickname ?? null).run();
 
   const auth = await getActor(c);
-  await logAudit(c.env.DB, { actor_type: 'user', actor_id: String(auth.userId), action: 'user.create', target: body.username, detail: { role }, ip: clientIp(c.req.raw) });
-  return c.json({ ok: true, id: result.meta.last_row_id }, 201);
+  await logAudit(c.env.DB, { actor_type: 'user', actor_id: String(auth.userId), action: 'user.create', target: body.username, detail: { role, generated_password: generated }, ip: clientIp(c.req.raw) });
+  return c.json({ ok: true, id: result.meta.last_row_id, generatedPassword: generated ? password : undefined }, 201);
 });
 
 adminUserRoutes.put('/api/admin/users/:id', async (c) => {

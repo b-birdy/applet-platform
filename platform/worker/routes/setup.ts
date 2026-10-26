@@ -19,6 +19,11 @@ export const setupRoutes = new Hono<{ Bindings: { DB: D1Database; ADMIN_INIT_PAS
 async function ensureSchema(db: D1Database): Promise<void> {
   const t = await db.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='t_users'`).first();
   if (!t) await applySchema(db);
+  // 存量库的幂等列迁移（CREATE TABLE 不会重跑）
+  const cols = await db.prepare(`PRAGMA table_info(t_applets)`).all<{ name: string }>();
+  if (!cols.results.some((c) => c.name === 'display')) {
+    await db.prepare(`ALTER TABLE t_applets ADD COLUMN display TEXT NOT NULL DEFAULT 'embed'`).run();
+  }
 }
 
 setupRoutes.get('/api/setup', async (c) => {

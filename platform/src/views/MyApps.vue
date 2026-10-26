@@ -53,8 +53,12 @@ async function purge(a: Usage) {
           <span class="meta">{{ a.rows }} 行数据<template v-if="a.lastActivity"> · 最近使用 {{ a.lastActivity }}</template></span>
         </div>
         <div class="ops">
-          <el-button size="small" :disabled="a.rows === 0" @click="exportData(a.appletId)">导出 JSON</el-button>
-          <el-button size="small" type="danger" plain :disabled="a.rows === 0" @click="purge(a)">清除数据</el-button>
+          <el-tooltip content="把你在该应用中的全部数据下载为 JSON 文件" placement="top">
+            <el-button size="small" :disabled="a.rows === 0" @click="exportData(a.appletId)">导出 JSON</el-button>
+          </el-tooltip>
+          <el-tooltip content="永久删除你在该应用中的全部数据，不可恢复" placement="top">
+            <el-button size="small" type="danger" plain :disabled="a.rows === 0" @click="purge(a)">清除数据</el-button>
+          </el-tooltip>
         </div>
       </li>
     </ul>

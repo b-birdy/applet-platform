@@ -67,10 +67,13 @@ async function serveFrom(c: any, prefix: string, slug: string, filePath: string,
   const obj = await c.env.ASSETS.get(key);
   if (!obj) return c.json({ error: 'NOT_FOUND' }, 404);
   const headers: Record<string, string> = { 'content-type': contentTypeOf(filePath), 'cache-control': 'no-store' };
-  // CSP（final review I6）：静态检查是提交时红线，CSP 是运行时红线
-  // script 限自身+平台运行时；connect-src 需放开同源（Data API）
+  // CSP（final review I6）：静态检查是提交时红线，CSP 是运行时红线。
+  // 沙箱 iframe（无 allow-same-origin）内 origin 不透明，'self' 匹配空集——
+  // 必须用请求的显式 origin 才能放行小程序自己的脚本与 Data API 请求。
   if (/\.html?$/i.test(filePath)) {
-    headers['content-security-policy'] = "default-src 'self'; script-src 'self' /app-runtime.js; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'";
+    const origin = new URL(c.req.url).origin;
+    headers['content-security-policy'] =
+      `default-src 'none'; script-src ${origin} /app-runtime.js; style-src ${origin} 'unsafe-inline'; img-src ${origin} data:; font-src ${origin}; connect-src ${origin}; frame-ancestors 'none'`;
   }
   return new Response(obj.body, { headers });
 }

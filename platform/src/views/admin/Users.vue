@@ -3,6 +3,9 @@
 import { ref, onMounted } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { api, ApiError } from '../../api/client';
+import { useAuthStore } from '../../stores/auth';
+
+const authStore = useAuthStore();
 
 type User = { id: number; username: string; role: string; nickname: string | null; status: string; locked_until: string | null };
 const users = ref<User[]>([]);
@@ -15,16 +18,35 @@ async function load() {
 }
 onMounted(load);
 
-async function create() {
-  const { value } = await ElMessageBox.prompt(
-    '格式：用户名,密码[,昵称]（密码至少 8 位）',
-    '新建用户',
-    { inputPlaceholder: 'alice,password123,爱丽丝', confirmButtonText: '创建', cancelButtonText: '取消' }
-  );
-  const [username, password, nickname] = value.split(',').map((s: string) => s.trim());
+// 新建用户对话框（角色/密码可选/昵称）
+const createVisible = ref(false);
+const createForm = ref({ username: '', password: '', nickname: '', role: 'user' });
+const idRe = /^[a-zA-Z0-9_-]{2,32}$/;
+
+function openCreate() {
+  createForm.value = { username: '', password: '', nickname: '', role: 'user' };
+  createVisible.value = true;
+}
+
+async function submitCreate() {
+  const f = createForm.value;
+  if (!idRe.test(f.username)) { ElMessage.warning('用户名需 2-32 位字母/数字/下划线/连字符'); return; }
+  if (f.password && f.password.length < 8) { ElMessage.warning('密码至少 8 位（留空则自动生成）'); return; }
   try {
-    await api('/api/admin/users', { method: 'POST', body: { username, password, nickname: nickname || undefined } });
-    ElMessage.success('已创建');
+    const res = await api<{ generatedPassword?: string }>('/api/admin/users', {
+      method: 'POST',
+      body: { username: f.username, password: f.password || undefined, nickname: f.nickname || undefined, role: f.role },
+    });
+    createVisible.value = false;
+    if (res.generatedPassword) {
+      await ElMessageBox.alert(
+        `<p>用户「${f.username}」已创建，自动生成密码（仅此一次显示）：</p><pre style="user-select:all;font-size:15px">${res.generatedPassword}</pre>`,
+        '请保存密码',
+        { dangerouslyUseHTMLString: true, confirmButtonText: '我已保存' }
+      );
+    } else {
+      ElMessage.success('已创建');
+    }
     await load();
   } catch (e) {
     ElMessage.error(e instanceof ApiError ? (e.code === 'DUPLICATE' ? '用户名已存在' : e.code) : '创建失败');
@@ -100,7 +122,9 @@ async function importCsv() {
       <div class="ops">
         <el-input v-model="q" placeholder="搜索用户名/昵称" clearable style="width: 200px" @change="load" @clear="load" />
         <el-button @click="importCsv">批量导入</el-button>
-        <el-button type="primary" @click="create">新建用户</el-button>
+        <el-tooltip content="创建平台账号；密码留空将自动生成并一次性显示" placement="bottom">
+          <el-button type="primary" @click="openCreate">新建用户</el-button>
+        </el-tooltip>
       </div>
     </header>
 
@@ -130,6 +154,31 @@ async function importCsv() {
         </template>
       </el-table-column>
     </el-table>
+
+    <!-- 新建用户对话框 -->
+    <el-dialog v-model="createVisible" title="新建用户" width="460px">
+      <el-form label-width="80px" @submit.prevent>
+        <el-form-item label="用户名" required>
+          <el-input v-model="createForm.username" placeholder="2-32 位字母/数字/下划线/连字符" />
+        </el-form-item>
+        <el-form-item label="角色">
+          <el-radio-group v-model="createForm.role">
+            <el-radio value="user">普通用户</el-radio>
+            <el-radio v-if="authStore.isAdmin" value="admin" disabled>管理员（仅超管可建）</el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item label="昵称">
+          <el-input v-model="createForm.nickname" placeholder="选填" />
+        </el-form-item>
+        <el-form-item label="密码">
+          <el-input v-model="createForm.password" type="password" show-password placeholder="留空自动生成（≥8 位）" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="createVisible = false">取消</el-button>
+        <el-button type="primary" :disabled="!createForm.username" @click="submitCreate">创建</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 

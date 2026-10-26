@@ -14,6 +14,15 @@
   --off: #9AA5A2;
   --danger: #C24E4E;
   --font: "IBM Plex Sans", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+  /* 体系 token：圆角 / 阴影 / 强调弱色阶 */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --shadow-sm: 0 1px 2px rgba(28, 36, 34, .04), 0 1px 3px rgba(28, 36, 34, .06);
+  --shadow-md: 0 2px 4px rgba(28, 36, 34, .05), 0 8px 24px -8px rgba(28, 36, 34, .12);
+  --shadow-lg: 0 4px 8px rgba(28, 36, 34, .06), 0 16px 40px -12px rgba(28, 36, 34, .16);
+  --accent-hover: #12605A;
+  --accent-soft: #F0F7F6;
 }
 
 html.dark {
@@ -26,6 +35,11 @@ html.dark {
   --line-strong: #3A4540;
   --accent: #2FA39A;
   --accent-weak: #1D3A37;
+  --accent-hover: #3BB5AC;
+  --accent-soft: #16211F;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, .2), 0 1px 3px rgba(0, 0, 0, .25);
+  --shadow-md: 0 2px 4px rgba(0, 0, 0, .25), 0 8px 24px -8px rgba(0, 0, 0, .4);
+  --shadow-lg: 0 4px 8px rgba(0, 0, 0, .3), 0 16px 40px -12px rgba(0, 0, 0, .5);
   --ok: #4CAF72;
   --warn: #D29A45;
   --off: #5F6B68;

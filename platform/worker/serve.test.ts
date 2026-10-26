@@ -82,6 +82,13 @@ describe('applet static serving', () => {
     expect(await ok.text()).toContain('preview');
   });
 
+  it('CSP on applet HTML includes explicit origin (sandboxed iframe: self matches nothing)', async () => {
+    const r = await SELF.fetch('https://x/app/serving-app/index.html', { headers: { cookie: adminCookie } });
+    const csp = r.headers.get('content-security-policy') ?? '';
+    expect(csp).toContain('https://x');
+    expect(csp).not.toMatch(/script-src [^;]*'self'/); // 'self' 在不透明 origin 下失效，不得只依赖它
+  });
+
   it('serves app-runtime.js placeholder', async () => {
     const r = await SELF.fetch('https://x/app-runtime.js');
     expect(r.status).toBe(200);
