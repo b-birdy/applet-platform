@@ -91,9 +91,10 @@ serveRoutes.get('/preview/:slug{.*}', async (c) => {
   return serveFrom(c, 'preview', split.slug, split.file, true);
 });
 
-// 内置运行时（Task 14 前为占位）
-serveRoutes.get('/app-runtime.js', (c) =>
-  new Response('window.applet = { ready: false };\n', {
+// 内置运行时（真身：平台注入凭据 + window.applet 数据接口）
+import runtimeJs from './applet-runtime.js?raw';
+serveRoutes.get('/app-runtime.js', () =>
+  new Response(runtimeJs, {
     headers: { 'content-type': 'application/javascript; charset=utf-8', 'cache-control': 'no-store' },
   })
 );
