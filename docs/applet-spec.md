@@ -1,0 +1,130 @@
+# Applet 小程序开发规范
+
+本规范是平台 MCP 服务 `get_spec` 工具的下发内容，也是 `check_applet` 自动检查与 CI 的规则来源。所有提交到本平台的小程序必须满足本规范；不满足的项会在检查报告中以 `error`（阻断上传）或 `warn`（提示管理员确认）标出。
+
+## structure
+
+目录结构与文件布局：
+
+```
+applets/<你的小程序id>/
+├─ applet.json        # 必需：清单（见 manifest 节）
+├─ index.html         # 入口文件（清单 entry 字段指向它）
+├─ assets/            # 样式、脚本、图标等静态资源
+│  ├─ style.css
+│  └─ main.js
+└─ …                  # 其余文件按需
+```
+
+- 每个小程序独占一个子目录，目录名即小程序 id：`^[a-z][a-z0-9-]*$`（小写字母开头，只能含小写字母、数字、连字符）。
+- 入口 HTML 必须引入平台运行时脚本：`<script src="/app-runtime.js"></script>`。它由平台在加载小程序时注入凭据与数据接口，没有它小程序无法访问数据。
+- 仅接受纯前端产物：HTML/CSS/JS（原生或构建后文件）。不含任何服务端代码、二进制可执行文件。构建产物需同时提交源码目录（或 source map），保证主逻辑可读。
+- 资产体积上限：单文件 ≤ 5MB，总计 ≤ 20MB（超限为 error `asset.size` / `asset.total_size`）。
+- 主逻辑源码总行数超过 10000 行会收到 warn `size.loc`，管理员可放通或要求拆分。
+
+## manifest
+
+`applet.json` 清单字段：
+
+```json
+{
+  "id": "word-cards",
+  "name": "背单词",
+  "icon": "📚",
+  "entry": "index.html",
+  "version": "1.0.0",
+  "external_apis": ["api.example.com"],
+  "tables": [
+    {
+      "name": "words",
+      "columns": [
+        { "name": "word", "type": "text", "required": true },
+        { "name": "meaning", "type": "text" },
+        { "name": "status", "type": "integer", "default": 0 }
+      ]
+    }
+  ]
+}
+```
+
+- `id`（必需）：与目录名完全一致，否则 error `manifest.invalid`。
+- `name`（必需）：显示名。`icon`：emoji 或 SVG 文件路径。`entry`（必需）：入口 HTML。`version`：语义化版本。
+- `tables`（必需，至少一张表）：声明你的数据表。表名列名须匹配 `^[a-z][a-z0-9_]*$`；列类型仅 `text | integer | real | blob`；`required` 标记必填；`default` 给默认值。列名不得为 `user_id`（平台保留，自动注入），否则 error `manifest.table`。
+- `external_apis`（可选）：允许访问的第三方 API 域名白名单。未声明的域名上 `fetch` 会报 error `security.external_api`。
+- 表结构演进（升级版本时）：只允许**新增列**（平台自动 `ALTER TABLE ADD COLUMN`，存量数据保留）。改列类型、删列、删表会被拒绝（`SchemaChangeError`）；确需破坏性变更时删除小程序重建（数据清空，管理员红字确认）。
+
+## data
+
+数据存取通过平台运行时 `window.applet`，按登录用户天然隔离——你永远只能读到当前用户自己的数据，也不需要（不允许）自行处理用户身份：
+
+```js
+const store = window.applet.data('words');   // 表名必须是清单里声明过的
+
+await store.list({ limit: 50, offset: 0 });  // → { rows: [...], total: n }  只含当前用户的行
+await store.create({ word: 'hello', meaning: '你好' });   // → { ok: true, id: 1 }
+await store.update(id, { status: 1 });       // → { ok: true }（只能改自己的行，别人的行 404）
+await store.remove(id);                      // → { ok: true }
+await store.batch([{ word: 'a' }, { word: 'b' }]);        // 单事务批量写入（≤1000 行）
+```
+
+- 字段：写入时 `id`、`user_id`、`created_at` 由平台管理，传入会被忽略。
+- 每用户每应用默认配额 10000 行 / 20MB；超出返回 413 `QUOTA_EXCEEDED`（含当前用量与限额）。管理员可为单个应用调高配额。
+- 错误码：`UNAUTHORIZED`(401) 凭据失效；`APPLET_FORBIDDEN`(403) 未授权；`TABLE_NOT_FOUND`(404) 表未声明；`BAD_COLUMN`(400) 列不在白名单；`REQUIRED_FIELD`(400) 必填缺失。
+- 凭据由平台通过 postMessage 注入运行时，小程序代码不接触、不存储任何 token。
+
+## security
+
+安全红线（检查器强制，error 阻断上传）：
+
+1. 禁止动态代码执行：不得出现 `eval(`、`new Function(`（`security.dynamic`）。
+2. 禁止 `document.cookie`（`security.cookie`）——沙箱内也拿不到平台会话。
+3. 禁止 `window.top`（`security.top`）——不得逃逸 iframe 容器。
+4. 禁止加载外部脚本：`<script src>` 只能指向本应用相对路径或 `/app-runtime.js`（`security.external`）。确需第三方库时把文件放进自己的目录。
+5. `fetch`/XHR 只能访问清单 `external_apis` 声明过的域名（`security.external_api`）。
+6. 不得硬编码密钥：形如 `api_key = "…"`、`secret = "…"`、`token = "…"` 的长字面量会被扫出（`security.secret`）。小程序不需要密钥——数据接口凭据由平台注入。
+7. 不得伪造他人数据：请求中的 `user_id` 一律被平台忽略并强制归属当前用户。
+8. 运行环境为 sandbox iframe（无 `allow-same-origin`），不要依赖 localStorage 持久化跨会话状态——用平台数据表。
+
+## upload
+
+上传流程（由你的 agent 通过平台 MCP 完成）：
+
+1. **获取规范**：调用 MCP 工具 `get_spec(section)`（`structure|manifest|data|security|upload` 或缺省全部），按规范开发。
+2. **自检**：调用 `check_applet({ applet_id, files })`——`files` 为相对路径→文本内容的对象。返回 `{ issues: [{ level, rule, file, message }] }`；任何 `level: "error"` 都必须修正后重检，直到零 error。
+3. **上传**：调用 `submit_applet({ applet_id, name, files })`。平台会：再跑一次检查（error 阻断）→ 校验资产体积 → 提交到 git 分支 `applet/<applet_id>`（已存在则 force 更新）→ 已有 open PR 则自动更新同一 PR，否则新建 PR → 你会拿到 `{ pr_number }`。
+4. **查进度**：`get_status({ applet_id })` 返回 PR 与检查状态（仅限你有权限的 applet）。
+5. 之后由管理员在平台内审阅 diff、合并 PR；合并后平台自动同步，小程序进入「测试」状态，管理员再手动「启用」。
+6. agent 首次提交某 applet 后即获得该 applet 的操作归属；操作其他 applet 需管理员追加授权（`AGENT_SCOPE` 错误）。
+7. 单次上传文件数建议 ≤ 200；总资产 ≤ 20MB（`asset.total_size`）。
+
+## 接口参考
+
+小程序在沙箱 iframe 中运行，与平台交互的完整接口面：
+
+**运行时（`/app-runtime.js` 提供）**
+- `window.applet.ready`：就绪标志。未就绪时等待 `message` 事件。
+- `window.applet.data(table)`：返回数据访问对象，方法见 data 节（`list / create / update / remove / batch`）。
+- 凭据注入：平台在 iframe `load` 后 `postMessage({ type: 'applet-token', token }, '*')`；token 有效期 60 分钟，临期自动重发。运行时接管，业务代码无感。
+
+**平台 URL**
+- 生产：`/app/<applet_id>/`（用户）；预览：`/preview/<applet_id>/`（管理员，PR 分支内容）。
+- 静态资源相对路径引用即可（`./assets/main.js`）。
+
+**主题（跟随平台深浅色）**
+- 用平台 CSS 变量保持一致：`var(--canvas)` 页面底、`var(--panel)` 面板、`var(--ink)` 正文、`var(--ink-2)` 次要文字、`var(--accent)` 交互色、`var(--line)` 边线、`var(--danger)` 危险操作。
+- 深色模式由平台在根元素切换 class，小程序只需消费变量、不要硬编码色值。
+
+**检查规则对照表（check_applet 返回的 rule 名）**
+| rule | 级别 | 含义 |
+|---|---|---|
+| manifest.missing | error | 缺 applet.json |
+| manifest.invalid | error | 清单字段缺失/JSON 坏/id 不符 |
+| manifest.table | error | 表/列声明不合法 |
+| entry.missing | error | 入口文件不存在 |
+| runtime.script | error | 入口 HTML 未引 /app-runtime.js |
+| security.dynamic / cookie / top | error | eval / document.cookie / window.top |
+| security.external | error | 加载未声明外部脚本 |
+| security.external_api | error | fetch 未声明域名 |
+| security.secret | error | 疑似硬编码密钥 |
+| asset.size / asset.total_size | error | 资产超 5MB / 20MB |
+| size.loc | warn | 源码超 10000 行 |

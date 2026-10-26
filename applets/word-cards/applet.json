@@ -1,0 +1,17 @@
+{
+  "id": "word-cards",
+  "name": "背单词",
+  "icon": "📚",
+  "entry": "index.html",
+  "version": "1.0.0",
+  "tables": [
+    {
+      "name": "words",
+      "columns": [
+        { "name": "word", "type": "text", "required": true },
+        { "name": "meaning", "type": "text" },
+        { "name": "status", "type": "integer", "default": 0 }
+      ]
+    }
+  ]
+}

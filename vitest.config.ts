@@ -22,6 +22,7 @@ export default defineConfig({
         test: {
           name: 'worker',
           include: ['platform/worker/**/*.test.ts'],
+          exclude: ['platform/worker/checker/spec.test.ts'],
           globals: true,
         },
       },
@@ -31,6 +32,14 @@ export default defineConfig({
           name: 'web',
           include: ['platform/src/**/*.test.ts'],
           environment: 'jsdom',
+        },
+      },
+      {
+        // 读真实磁盘文件的测试（规范文档防漂移）：Node 环境（workerd fs 沙箱读不了任意路径）
+        test: {
+          name: 'node',
+          include: ['platform/worker/checker/spec.test.ts'],
+          environment: 'node',
         },
       },
     ],
