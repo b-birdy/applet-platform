@@ -42,6 +42,23 @@ async function pullFiles(env: SyncEnv, ref: string, slug: string, destPrefix: st
   return count;
 }
 
+/** 单应用刷新：拉 main 上该 applet 的文件到 prod + 跑 checker 存报告 */
+export async function refreshApplet(env: SyncEnv, slug: string): Promise<void> {
+  await pullFiles(env, 'main', slug, 'prod');
+  const tree = await env.GITHUB.getTree('main');
+  const files = new Map<string, string>();
+  for (const f of tree) {
+    if (!f.path.startsWith(`applets/${slug}/`)) continue;
+    if (!TEXT_EXT.test(f.path)) continue;
+    const raw = await env.GITHUB.getContent('main', f.path);
+    if (raw !== null) files.set(f.path.slice(`applets/${slug}/`.length), new TextDecoder().decode(raw));
+  }
+  const issues = checkApplet(slug, files);
+  await env.DB.prepare(`INSERT INTO t_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`)
+    .bind(`check_report.${slug}`, JSON.stringify(issues))
+    .run();
+}
+
 export async function syncOnce(env: SyncEnv): Promise<{ added: string[]; missing: string[] }> {
   const repoSlugs = await listRepoSlugs(env);
   const registered = (await env.DB.prepare(`SELECT id, path, status FROM t_applets`).all<{ id: number; path: string; status: string }>()).results;
@@ -65,22 +82,8 @@ export async function syncOnce(env: SyncEnv): Promise<{ added: string[]; missing
       } catch { /* 清单坏也先注册，报告会指出 */ }
     }
     await env.DB.prepare(`INSERT INTO t_applets (name, path, status, entry) VALUES (?, ?, 'testing', ?)`).bind(name, slug, entry).run();
-    await pullFiles(env, 'main', slug, 'prod');
+    await refreshApplet(env, slug);
     added.push(slug);
-
-    // checker 报告存 t_settings（新 applet 无 PR 行）
-    const tree = await env.GITHUB.getTree('main');
-    const files = new Map<string, string>();
-    for (const f of tree) {
-      if (!f.path.startsWith(`applets/${slug}/`)) continue;
-      if (!TEXT_EXT.test(f.path)) continue;
-      const raw = await env.GITHUB.getContent('main', f.path);
-      if (raw !== null) files.set(f.path.slice(`applets/${slug}/`.length), new TextDecoder().decode(raw));
-    }
-    const issues = checkApplet(slug, files);
-    await env.DB.prepare(`INSERT INTO t_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`)
-      .bind(`check_report.${slug}`, JSON.stringify(issues))
-      .run();
   }
 
   // 消失目录 → missing=1（不自动删）；重新出现 → 清标记

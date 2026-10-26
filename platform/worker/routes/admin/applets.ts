@@ -5,6 +5,8 @@ import { requireRole, requireAuth, type AuthInfo } from '../../auth';
 import { logAudit } from '../../audit';
 import { dropAppletTables } from '../../data';
 import { checkApplet } from '../../checker';
+import { createAppletRemover } from '../../remover';
+import { getGithubClient } from '../../github-bind';
 
 const STATUSES = new Set(['testing', 'enabled', 'disabled']);
 // D11 状态机: testing⇄enabled⇄disabled；disabled→testing 非法
@@ -22,15 +24,11 @@ type AppletEnv = {
 export const adminAppletRoutes = new Hono<AppletEnv>();
 export type AppletRemover = { remove(appletId: string): Promise<void> };
 
-// env 注入 remover（Task 10 接真身）；缺省 stub 抛错
+// env 注入 remover（测试可覆盖）；缺省用真身（github + R2 清理）
 function getRemover(c: any): AppletRemover {
   const wired = (c.env as any).APPLET_REMOVER as AppletRemover | undefined;
   if (wired) return wired;
-  return {
-    async remove() {
-      throw new Error('remover not wired (Task 10)');
-    },
-  };
+  return createAppletRemover({ DB: c.env.DB, ASSETS: c.env.ASSETS, GITHUB: getGithubClient(undefined) });
 }
 
 adminAppletRoutes.use('/api/admin/applets/*', requireRole('admin'));

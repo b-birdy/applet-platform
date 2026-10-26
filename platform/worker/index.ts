@@ -5,9 +5,12 @@ import { dataRoutes } from './routes/data';
 import { adminUserRoutes } from './routes/admin/users';
 import { adminAppletRoutes } from './routes/admin/applets';
 import { hookRoutes } from './routes/hooks';
+import { prRoutes } from './routes/admin/pr';
 import { serveRoutes } from './serve';
 import { syncOnce } from './sync';
 import { GitHubClient } from './github';
+import { getGithubClient } from './github-bind';
+import { createAppletRemover } from './remover';
 import { requireAuth, type AuthInfo } from './auth';
 
 type Bindings = {
@@ -23,13 +26,19 @@ type Bindings = {
 
 const app = new Hono<{ Bindings: Bindings; Variables: { auth: AuthInfo } }>();
 
-// GitHub 客户端组装（测试注入 GITHUB env 时优先）
+// GitHub 客户端组装（测试注入 GITHUB env 或 github-bind override 时优先）
 function githubOf(env: Bindings & { GITHUB?: GitHubClient }): GitHubClient {
   if ((env as any).GITHUB) return (env as any).GITHUB;
   if (!env.GITHUB_TOKEN || !env.GITHUB_OWNER || !env.GITHUB_REPO) {
     throw new Error('GitHub not configured (GITHUB_TOKEN/GITHUB_OWNER/GITHUB_REPO secrets)');
   }
-  return new GitHubClient(env.GITHUB_TOKEN, env.GITHUB_OWNER, env.GITHUB_REPO);
+  return getGithubClient(new GitHubClient(env.GITHUB_TOKEN, env.GITHUB_OWNER, env.GITHUB_REPO));
+}
+
+// remover 接线：applet DELETE 路由的 env.APPLET_REMOVER
+export function createBindings(env: Bindings & { GITHUB?: GitHubClient }) {
+  const gh = githubOf(env);
+  return { github: gh, remover: createAppletRemover({ DB: env.DB, ASSETS: env.ASSETS, GITHUB: gh }) };
 }
 
 app.get('/api/health', (c) => c.json({ ok: true }));
@@ -39,6 +48,7 @@ app.route('/', dataRoutes);
 app.route('/', adminUserRoutes);
 app.route('/', adminAppletRoutes);
 app.route('/', hookRoutes);
+app.route('/', prRoutes);
 app.route('/', serveRoutes);
 // 示例受保护路由：验证 requireAuth 中间件可用
 app.get('/api/whoami', requireAuth(), (c) => c.json(c.get('auth')));
