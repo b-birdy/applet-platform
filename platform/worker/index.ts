@@ -3,6 +3,7 @@ import { setupRoutes } from './routes/setup';
 import { authRoutes } from './routes/auth';
 import { dataRoutes } from './routes/data';
 import { adminUserRoutes } from './routes/admin/users';
+import { adminAppletRoutes } from './routes/admin/applets';
 import { requireAuth, type AuthInfo } from './auth';
 
 type Bindings = {
@@ -19,6 +20,7 @@ app.route('/', setupRoutes);
 app.route('/', authRoutes);
 app.route('/', dataRoutes);
 app.route('/', adminUserRoutes);
+app.route('/', adminAppletRoutes);
 // 示例受保护路由：验证 requireAuth 中间件可用
 app.get('/api/whoami', requireAuth(), (c) => c.json(c.get('auth')));
 
