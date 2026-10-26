@@ -85,6 +85,9 @@ export const mcpAdminRoutes = new Hono<McpRouteEnv & { Variables: { auth: AuthIn
 mcpAdminRoutes.use('/api/admin/access-codes', requireAdmin());
 mcpAdminRoutes.use('/api/admin/agents/*', requireAdmin());
 mcpAdminRoutes.use('/api/admin/agents', requireAdmin());
+mcpAdminRoutes.use('/api/admin/settings', requireAdmin());
+mcpAdminRoutes.use('/api/admin/logs', requireAdmin());
+mcpAdminRoutes.use('/api/admin/sync', requireAdmin());
 
 function requireAdmin() {
   return async (c: any, next: () => Promise<void>) => {

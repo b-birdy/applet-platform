@@ -125,6 +125,22 @@ describe('authorization (D10)', () => {
   });
 });
 
+describe('admin settings/logs/sync require auth (final deploy hotfix)', () => {
+  it.each([
+    '/api/admin/settings',
+    '/api/admin/logs',
+    '/api/admin/sync',
+  ])('GET %s without session → 401', async (path) => {
+    const r = await SELF.fetch(`https://x${path}`);
+    expect(r.status).toBe(401);
+  });
+
+  it('POST /api/admin/sync without session → 401', async () => {
+    const r = await SELF.fetch('https://x/api/admin/sync', { method: 'POST' });
+    expect(r.status).toBe(401);
+  });
+});
+
 describe('check report', () => {
   it('runs checker over R2 prod files', async () => {
     // 直接往 R2 写入一个带 eval 的假入口（绕过同步器）
