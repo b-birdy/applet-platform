@@ -5,7 +5,7 @@ compatibility_date = "2026-10-01"
 [[d1_databases]]
 binding = "DB"
 database_name = "applet-platform-db"
-database_id = "placeholder" # TODO(deploy): replace with real D1 database_id
+database_id = "54c58c42-5bdb-468f-bd15-e25d7dbdb293"
 
 [[r2_buckets]]
 binding = "ASSETS"
@@ -13,3 +13,9 @@ bucket_name = "applet-platform-assets"
 
 [triggers]
 crons = ["*/5 * * * *"]
+
+# SPA 静态资源（Workers Builds 构建产物 platform/dist）；未匹配路径回 index.html
+[assets]
+directory = "../dist"
+binding = "ASSET_FILES"
+not_found_handling = "single-page-application"

@@ -105,14 +105,14 @@ serveRoutes.get('/app-runtime.js', () =>
   })
 );
 
-// SPA 回退：前端路由（/、/login、/profile、/admin/*…）全部回 index.html
-// 顺序在所有 API/applet 路由之后挂载
+// SPA 回退：前端路由（/、/login、/profile、/admin/*…）交给 assets 层
+// （not_found_handling = single-page-application 自动回 index.html）
 serveRoutes.get('/:spa{.*}', async (c) => {
   const path = new URL(c.req.url).pathname;
   if (!path.startsWith('/api/') && path !== '/app-runtime.js' && !path.startsWith('/app/') && !path.startsWith('/preview/') && !path.startsWith('/mcp')) {
-    const obj = await c.env.ASSETS.get('spa/index.html');
-    if (!obj) return c.json({ error: 'SPA_NOT_DEPLOYED' }, 404);
-    return new Response(obj.body, { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } });
+    const fetcher = (c.env as any).ASSET_FILES as Fetcher | undefined;
+    if (!fetcher) return c.json({ error: 'SPA_NOT_DEPLOYED' }, 404);
+    return fetcher.fetch(c.req.raw);
   }
   return c.json({ error: 'NOT_FOUND' }, 404);
 });

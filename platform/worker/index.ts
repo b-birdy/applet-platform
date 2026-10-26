@@ -21,6 +21,7 @@ type Bindings = {
   ADMIN_INIT_PASSWORD?: string;
   MCP_SIGNING_KEY?: string;
   GH_WEBHOOK_SECRET?: string;
+  ASSET_FILES?: Fetcher;
   GITHUB_TOKEN?: string;
   GITHUB_OWNER?: string;
   GITHUB_REPO?: string;

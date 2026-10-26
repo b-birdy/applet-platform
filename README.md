@@ -28,9 +28,13 @@ applet-platform/
 > **重要**：`*.workers.dev` 域名在中国大陆基本不可访问。生产使用请绑定自定义域名（见第 9 步）。
 
 1. **Fork 或使用本仓库**：本仓库应为 public，包含全部代码与 CI。
-2. **创建 D1 数据库**：Cloudflare 控制台 → Storage & Databases → D1 → Create，命名 `applet-platform-db`。创建后记下 Database ID。
+2. **创建 D1 数据库**：Cloudflare 控制台 → Storage & Databases → D1 → Create，命名 `applet-platform-db`。（本仓库已内置 Database ID `54c58c42-5bdb-468f-bd15-e25d7dbdb293`；若你重建了库，替换 `platform/worker/wrangler.toml` 中的 `database_id`。）
 3. **创建 R2 存储桶**：Storage & Databases → R2 → Create bucket，命名 `applet-platform-assets`。
-4. **创建 Worker**：推荐用 Wrangler CLI 部署（见下方「Wrangler CLI 部署」；SPA 由 Worker 内建路由回退伺服，无需额外 Assets 配置）。若用控制台连接 Git 仓库，Build command 填 `pnpm install --frozen-lockfile && pnpm build`。
+4. **创建 Worker（Workers Builds，推荐）**：Workers & Pages → Create → Workers → Connect to Git，选中本仓库 `applet-platform`。构建设置：
+   - Build command: `npx pnpm install --frozen-lockfile && npx pnpm build`
+   - 部署命令（Deploy command）: `npx wrangler deploy --config platform/worker/wrangler.toml`
+   - 根目录：仓库根
+   静态资源由 wrangler.toml 的 `[assets]` 配置自动上传（`platform/dist`，构建后生成），SPA 路由回退已内置（not_found_handling）。首次部署成功后再做后续绑定（第 6-7 步）。
 5. **配置 wrangler.toml**：把 `platform/worker/wrangler.toml` 中 `database_id` 的占位符替换为第 2 步的 Database ID（文件中有 `TODO(deploy)` 注释标记）。
 6. **绑定资源**：Worker → Settings → Bindings：绑定第 2 步的 D1（变量名 `DB`）与第 3 步的 R2（变量名 `ASSETS`）；确认 Cron Trigger 已启用（每 5 分钟）。
 7. **配置 Secrets**（Worker → Settings → Variables and Secrets，全部为 Secret 类型）：
@@ -62,10 +66,12 @@ applet-platform/
 
 ```bash
 cd platform/worker
-npx wrangler d1 execute applet-platform --file=./db/schema.sql --remote  # 初始化表结构
+npx wrangler d1 execute applet-platform-db --file=./db/schema.sql --remote  # 初始化表结构
 npx wrangler deploy
 npx wrangler secret put ADMIN_INIT_PASSWORD  # 依次配置全部 Secrets
 ```
+
+> Workers Builds 路径下同样需要先跑一次 schema 初始化（本地 `npx wrangler d1 execute applet-platform-db --file=platform/worker/db/schema.sql --remote`），首次 `/api/setup` 才能工作。
 
 ## Agent 接入指南
 
