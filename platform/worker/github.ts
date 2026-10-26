@@ -11,7 +11,8 @@ export class NotFound extends Error {
 
 export class GitHubClient {
   private api: string;
-  constructor(private token: string, private owner: string, private repo: string, private fetchImpl: typeof fetch = fetch) {
+  constructor(private token: string, private owner: string, private repo: string, private fetchImpl: typeof fetch = fetch.bind(globalThis)) {
+    // fetch.bind: Workers 里解绑的 fetch 会抛 Illegal invocation
     this.api = `https://api.github.com/repos/${owner}/${repo}`;
   }
 
