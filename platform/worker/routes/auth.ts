@@ -22,6 +22,11 @@ authRoutes.post('/api/auth/login', async (c) => {
   const hash = user?.password_hash ?? 'pbkdf2$100000$QUJDREVGR0hJSktMTU5PUA==$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=';
   const ok = await verifyPassword(body.password, hash);
 
+  if (user && user.status === 'locked') {
+    await logAudit(db, { actor_type: 'user', actor_id: body.username, action: 'login.locked', ip: clientIp(c.req.raw) });
+    return c.json({ error: 'LOCKED', code: 'LOCKED' }, 401);
+  }
+
   if (user && user.locked_until) {
     const until = new Date(user.locked_until + 'Z').getTime();
     if (!Number.isNaN(until) && until > Date.now()) {

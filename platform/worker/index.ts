@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { setupRoutes } from './routes/setup';
 import { authRoutes } from './routes/auth';
 import { dataRoutes } from './routes/data';
+import { adminUserRoutes } from './routes/admin/users';
 import { requireAuth, type AuthInfo } from './auth';
 
 type Bindings = {
@@ -17,6 +18,7 @@ app.get('/api/health', (c) => c.json({ ok: true }));
 app.route('/', setupRoutes);
 app.route('/', authRoutes);
 app.route('/', dataRoutes);
+app.route('/', adminUserRoutes);
 // 示例受保护路由：验证 requireAuth 中间件可用
 app.get('/api/whoami', requireAuth(), (c) => c.json(c.get('auth')));
 

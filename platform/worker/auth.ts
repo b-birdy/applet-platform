@@ -100,8 +100,9 @@ export function requireRole(min: 'user' | 'admin' | 'superadmin') {
 function createAuthMiddleware(minLevel: number) {
   return async (c: any, next: () => Promise<void>) => {
     const auth = await getAuth(c.req.raw, c.env.DB);
-    if (!auth || ROLE_ORDER[auth.role] === undefined || ROLE_ORDER[auth.role] < minLevel) {
-      return c.json({ error: 'UNAUTHORIZED' }, 401);
+    if (!auth) return c.json({ error: 'UNAUTHORIZED' }, 401);
+    if (ROLE_ORDER[auth.role] === undefined || ROLE_ORDER[auth.role] < minLevel) {
+      return c.json({ error: 'FORBIDDEN' }, 403);
     }
     c.set('auth', auth);
     await next();
