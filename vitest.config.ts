@@ -10,7 +10,12 @@ export default defineConfig({
           cloudflareTest({
             main: './platform/worker/index.ts',
             wrangler: { configPath: './platform/worker/wrangler.toml' },
-            miniflare: { bindings: { ADMIN_INIT_PASSWORD: 'test-admin-init' } },
+            miniflare: {
+              bindings: {
+                ADMIN_INIT_PASSWORD: 'test-admin-init',
+                MCP_SIGNING_KEY: 'test-signing-key',
+              },
+            },
           }),
         ],
         test: {
