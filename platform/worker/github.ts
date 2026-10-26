@@ -1,5 +1,13 @@
 // GitHub REST 客户端（裸 fetch，可注入 fetchImpl 供测试）
 export type CommitAuthor = { name: string; email: string };
+
+/** UTF-8 安全的 base64（btoa 原生只认 Latin-1；unescape 在 Workers 不存在） */
+function utf8ToBase64(text: string): string {
+  const bytes = new TextEncoder().encode(text);
+  let bin = '';
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin);
+}
 export type PutFile = string | { contentBase64: string };
 
 export class NotFound extends Error {
@@ -60,7 +68,7 @@ export class GitHubClient {
     for (const [path, content] of files) {
       const isB64 = typeof content !== 'string';
       const { status, json } = await this.call('POST', '/git/blobs', {
-        content: isB64 ? content.contentBase64 : btoa(unescape(encodeURIComponent(content))),
+        content: isB64 ? content.contentBase64 : utf8ToBase64(content),
         encoding: isB64 ? 'base64' : 'utf-8',
       });
       if (status !== 201) throw new Error(`blob ${path}: HTTP ${status}`);

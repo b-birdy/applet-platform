@@ -2,7 +2,7 @@
 import { SPEC_MD as specMd } from './spec-text';
 import { checkAppletWithSizes } from './checker';
 import { getGithubClient } from './github-bind';
-import { registerAppletTables, SchemaChangeError, type ManifestTable } from './data';
+import { registerAppletTables, SchemaChangeError, appletTable, type ManifestTable } from './data';
 
 const enc = new TextEncoder();
 
@@ -168,11 +168,13 @@ async function submitApplet(env: McpEnv, agent: { id: number; name: string }, ar
     if (typeof content === 'string') fileMap.set(`applets/${appletId}/${path}`, content);
   }
 
-  // 无注册行则建（首个提交者建立归属）
+  // 无注册行则建（首个提交者建立归属）；git 操作失败时回滚，避免孤儿行卡死后续提交
+  let createdHere = false;
   let appletRowId = existing?.id;
   if (!appletRowId) {
     const ins = await env.DB.prepare(`INSERT INTO t_applets (name, path, status, entry, display) VALUES (?, ?, 'testing', ?, ?)`).bind(displayName, appletId, entry, display).run();
     appletRowId = ins.meta.last_row_id as number;
+    createdHere = true;
   }
 
   // 数据表注册/演进（Critical #1：生产链路必须建物理表与清单快照）
@@ -190,15 +192,32 @@ async function submitApplet(env: McpEnv, agent: { id: number; name: string }, ar
   }
 
   const author = { name: `applet-agent[${agent.id}]`, email: `${agent.name}@agents.noreply.applet-platform` };
-  await gh.putFiles(`applet/${appletId}`, fileMap, `submit applet ${appletId} by agent ${agent.id}`, author);
-
-  // D28: 已有 open PR 则同分支更新（不新开）
-  const open = await env.DB.prepare(`SELECT pr_number FROM t_prs WHERE applet_id = ? AND state = 'open'`).bind(appletRowId).first<{ pr_number: number }>();
+  let newBranchSha: string;
   let prNumber: number;
-  if (open) {
-    prNumber = open.pr_number;
-  } else {
-    prNumber = await gh.openPR(`Applet: ${displayName} (${appletId})`, `applet/${appletId}`, 'main');
+  try {
+    newBranchSha = await gh.putFiles(`applet/${appletId}`, fileMap, `submit applet ${appletId} by agent ${agent.id}`, author);
+
+    // D28: 已有 open PR 则同分支更新（不新开）
+    const open = await env.DB.prepare(`SELECT pr_number FROM t_prs WHERE applet_id = ? AND state = 'open'`).bind(appletRowId).first<{ pr_number: number }>();
+    if (open) {
+      prNumber = open.pr_number;
+    } else {
+      prNumber = await gh.openPR(`Applet: ${displayName} (${appletId})`, `applet/${appletId}`, 'main');
+    }
+  } catch (e) {
+    // 回滚本次新建的注册行/表，让 agent 可以原样重试
+    if (createdHere) {
+      const tables = Object.keys((JSON.parse(files['applet.json']).tables ?? []) as unknown as Record<string, unknown>);
+      for (const t of tables) {
+        await env.DB.prepare(`DROP TABLE IF EXISTS ${appletTable(appletId, t)}`).run().catch(() => {});
+      }
+      await env.DB.prepare(`DELETE FROM t_settings WHERE key = ?`).bind(`manifest.${appletId}`).run().catch(() => {});
+      await env.DB.prepare(`DELETE FROM t_applets WHERE id = ?`).bind(appletRowId).run().catch(() => {});
+    }
+    console.error('submit_applet git failure:', e);
+    return toolDenied('GIT_SUBMIT_FAILED', { message: e instanceof Error ? e.message : 'git submit failed', applet_id: appletId });
+  }
+  if (createdHere || !(await env.DB.prepare(`SELECT 1 AS ok FROM t_prs WHERE applet_id = ? AND state = 'open'`).bind(appletRowId).first())) {
     await env.DB.prepare(`INSERT INTO t_prs (applet_id, pr_number, branch, state) VALUES (?, ?, ?, 'open')`).bind(appletRowId, prNumber, `applet/${appletId}`).run();
     await env.DB.prepare(`INSERT INTO t_agent_applets (agent_id, applet_id, source) VALUES (?, ?, 'submitted') ON CONFLICT DO NOTHING`).bind(agent.id, appletRowId).run();
   }

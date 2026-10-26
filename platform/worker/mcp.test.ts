@@ -242,6 +242,39 @@ describe('submit flow (approved agent)', () => {
     expect(toolResult(res.json).error).toBe('AGENT_SCOPE');
   });
 
+  it('git failure returns GIT_SUBMIT_FAILED and rolls back orphan rows', async () => {
+    // 新 agent + 新 applet，putFiles 故意抛错（模拟 GitHub 故障）
+    const code = await makeAccessCode();
+    await callTool('agent_apply', { name: 'rollback-agent', fingerprint: 'fp-rb' }, code);
+    const rid = (await env.DB.prepare(`SELECT id FROM t_agents WHERE name='rollback-agent'`).first<any>()).id;
+    const r0 = await SELF.fetch(`https://x/api/admin/agents/${rid}/approve`, { method: 'POST', headers: { cookie: adminCookie }, body: '{}' });
+    const rk = (await r0.json() as any).key;
+
+    setGithubClient({
+      async getTree() { return []; },
+      async getContent() { return null; },
+      async getHeadSha() { return null; },
+      async putFiles() { throw new Error('github down'); },
+      async openPR() { return 1; },
+      async getPR() { return { state: 'open' as const, head: 'x', mergeable: true }; },
+      async mergePR() {},
+      async deleteDir() { return 'x'; },
+    } as unknown as GitHubClient);
+
+    const rbFiles = { ...GOOD_FILES, 'applet.json': (GOOD_FILES['applet.json'] as string).replace('mcapp', 'rb-app') };
+    const res = await callTool('submit_applet', { applet_id: 'rb-app', name: 'RB', files: rbFiles }, rk);
+    expect(res.status).toBe(403); // 工具级拒绝（JSON-RPC result 包裹，HTTP 语义同 AGENT_SCOPE 等）
+    expect(toolResult(res.json).error).toBe('GIT_SUBMIT_FAILED');
+    // 无孤儿行：applet 未注册
+    const row = await env.DB.prepare(`SELECT id FROM t_applets WHERE path='rb-app'`).first();
+    expect(row).toBeNull();
+    // 同 agent 换好的 mock 重试应成功建立归属（不再撞 AGENT_SCOPE）
+    const { gh: goodGh } = makeGithubNoop();
+    setGithubClient(goodGh);
+    const res2 = await callTool('submit_applet', { applet_id: 'rb-app', name: 'RB', files: rbFiles }, rk);
+    expect(toolResult(res2.json).pr_number).toBe(1);
+  });
+
   it('revoked key is rejected immediately (Review Focus 3)', async () => {
     const r = await SELF.fetch(`https://x/api/admin/agents/${agentId}/revoke`, { method: 'POST', headers: { cookie: adminCookie }, body: '{}' });
     expect(r.status).toBe(200);
