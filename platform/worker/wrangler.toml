@@ -19,3 +19,6 @@ crons = ["*/5 * * * *"]
 directory = "../dist"
 binding = "ASSET_FILES"
 not_found_handling = "single-page-application"
+# Assets 层默认会拦截"导航类"请求直接回 SPA（Worker 不执行）——沙箱 iframe
+# 导航因此拿不到 cookie 变空白。全部请求先过 Worker，由 worker 路由决定。
+run_worker_first = true
