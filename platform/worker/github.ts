@@ -123,7 +123,8 @@ export class GitHubClient {
     const victims = ((fullTree as any).tree as { path: string; type: string }[])
       .filter((e) => e.type === 'blob' && (e.path === dir || e.path.startsWith(`${dir}/`)))
       .map((e) => ({ path: e.path, sha: null, mode: '100644', type: 'blob' }));
-    if (victims.length === 0) throw new NotFound(`directory ${dir} is empty or missing`);
+    // 目录不存在/为空：视为已删（幂等），静默返回
+    if (victims.length === 0) return baseSha;
 
     const { status: treeStatus, json: treeJson } = await this.call('POST', '/git/trees', { base_tree: baseTree, tree: victims });
     if (treeStatus !== 201) throw new Error(`delete tree: HTTP ${treeStatus}`);
@@ -158,6 +159,18 @@ export class GitHubClient {
       head: (json as any).head.ref,
       mergeable: (json as any).mergeable === true,
     };
+  }
+
+  /** 关闭 PR（硬删除时配套；404 视为已关） */
+  async closePR(num: number): Promise<void> {
+    const { status } = await this.call('PATCH', `/pulls/${num}`, { state: 'closed' });
+    if (status !== 200 && status !== 404) throw new Error(`closePR: HTTP ${status}`);
+  }
+
+  /** 删除分支（404 视为已删） */
+  async deleteBranch(branch: string): Promise<void> {
+    const { status } = await this.call('DELETE', `/git/refs/heads/${this.encPath(branch)}`);
+    if (status !== 204 && status !== 422 && status !== 404) throw new Error(`deleteBranch: HTTP ${status}`);
   }
 
   async mergePR(num: number, sha: string): Promise<void> {
