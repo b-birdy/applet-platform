@@ -138,4 +138,21 @@ describe('hard delete via real remover', () => {
     const audit = await env.DB.prepare(`SELECT action FROM t_audit_logs WHERE action='applet.delete'`).all();
     expect(audit.results.length).toBe(1);
   });
+
+  it('delete also cleans agent_applets ownership (FK child rows)', async () => {
+    setGithubClient(makeGithubStub({ tree: [] }).gh); // 本用例只验 D1 清理；remover 外部清理走 stub
+    // agent(1) 归属 applet 14 —— 删除 applet 时必须一并清理，否则 FK 约束 500
+    await env.DB.prepare(`INSERT INTO t_applets (id, name, path, status, entry) VALUES (14, '归属测', 'ownapp', 'testing', 'index.html')`).run();
+    await env.DB.prepare(`INSERT INTO t_agents (id, name, fingerprint, status) VALUES (1, 'fk-agent', 'fp-fk', 'approved')`).run();
+    await env.DB.prepare(`INSERT INTO t_agent_applets (agent_id, applet_id, source) VALUES (1, 14, 'submitted')`).run();
+
+    const del = await SELF.fetch('https://x/api/admin/applets/ownapp', {
+      method: 'DELETE', headers: { cookie: adminCookie },
+    });
+    expect(del.status).toBe(200);
+    const own = await env.DB.prepare(`SELECT * FROM t_agent_applets WHERE applet_id = 14`).all();
+    expect(own.results).toHaveLength(0);
+    const row = await env.DB.prepare(`SELECT id FROM t_applets WHERE path='ownapp'`).first();
+    expect(row).toBeNull();
+  });
 });

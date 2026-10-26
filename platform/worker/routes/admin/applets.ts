@@ -172,8 +172,9 @@ adminAppletRoutes.delete('/api/admin/applets/:id', async (c) => {
   const remover = getRemover(c);
   await remover.remove(slug);
 
-  // D1 侧硬删除序列
+  // D1 侧硬删除序列（先清子行，否则 FK 约束失败）
   await dropAppletTables(c.env.DB, slug);
+  await c.env.DB.prepare(`DELETE FROM t_agent_applets WHERE applet_id = ?`).bind(applet.id).run();
   await c.env.DB.prepare(`DELETE FROM t_applet_acls WHERE applet_id = ?`).bind(applet.id).run();
   await c.env.DB.prepare(`DELETE FROM t_prs WHERE applet_id = ?`).bind(applet.id).run();
   for (const key of [`quota.${slug}.rows`, `quota.${slug}.bytes`]) {
