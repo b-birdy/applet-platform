@@ -165,3 +165,70 @@ mcpAdminRoutes.post('/api/admin/agents/:id/grant', async (c) => {
   await logAudit(c.env.DB, { actor_type: 'user', actor_id: String(auth.userId), action: 'agent.grant', target: agent.name, detail: { applet: body.appletId } });
   return c.json({ ok: true });
 });
+
+// ---------- 管理端：系统设置 / GitHub 状态 / 审计日志（Task 15 计划缺口补齐）----------
+
+const SETTING_KEYS = ['site_name', 'registration_enabled', 'lock_threshold', 'lock_minutes', 'quota_rows', 'quota_bytes'];
+
+mcpAdminRoutes.get('/api/admin/settings', async (c) => {
+  const rows = (await c.env.DB.prepare(`SELECT key, value FROM t_settings WHERE key IN (${SETTING_KEYS.map(() => '?').join(',')})`)
+    .bind(...SETTING_KEYS).all() as any).results as { key: string; value: string }[];
+  const settings: Record<string, string> = {};
+  for (const r of rows) settings[r.key] = r.value;
+  // GitHub 连接状态
+  let github: { configured: boolean; lastSync: string | null } = { configured: false, lastSync: null };
+  try {
+    const last = (await c.env.DB.prepare(`SELECT at FROM t_audit_logs WHERE action='sync.once' ORDER BY id DESC LIMIT 1`).first()) as { at: string } | null;
+    github = { configured: Boolean((c.env as any).GITHUB_TOKEN), lastSync: last?.at ?? null };
+  } catch { /* 表可能为空 */ }
+  return c.json({ settings, github });
+});
+
+mcpAdminRoutes.put('/api/admin/settings', async (c) => {
+  const body = await c.req.json().catch((): Record<string, string> | null => null) as Record<string, string> | null;
+  if (!body) return c.json({ error: 'BAD_REQUEST' }, 400);
+  for (const [key, value] of Object.entries(body)) {
+    if (!SETTING_KEYS.includes(key)) return c.json({ error: 'UNKNOWN_KEY', key }, 400);
+    await c.env.DB.prepare(`INSERT INTO t_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`)
+      .bind(key, String(value)).run();
+  }
+  const auth = c.get('auth');
+  await logAudit(c.env.DB, { actor_type: 'user', actor_id: String(auth.userId), action: 'settings.update', detail: body });
+  return c.json({ ok: true });
+});
+
+mcpAdminRoutes.get('/api/admin/logs', async (c) => {
+  const actor = c.req.query('actor');
+  const action = c.req.query('action');
+  const limit = Math.min(Number(c.req.query('limit') || 100), 500);
+  let sql = `SELECT id, actor_type, actor_id, action, target, detail, at FROM t_audit_logs`;
+  const conds: string[] = [];
+  const binds: any[] = [];
+  if (actor) { conds.push(`(actor_id LIKE ? OR actor_type = ?)`); binds.push(`%${actor}%`, actor); }
+  if (action) { conds.push(`action LIKE ?`); binds.push(`%${action}%`); }
+  if (conds.length) sql += ` WHERE ${conds.join(' AND ')}`;
+  sql += ` ORDER BY id DESC LIMIT ?`;
+  binds.push(limit);
+  const rows = (await c.env.DB.prepare(sql).bind(...binds).all() as any).results;
+  return c.json({ logs: rows });
+});
+
+mcpAdminRoutes.get('/api/admin/sync', async (c) => {
+  const last = (await c.env.DB.prepare(`SELECT at, detail FROM t_audit_logs WHERE action='sync.once' ORDER BY id DESC LIMIT 1`).first()) as { at: string; detail: string | null } | null;
+  const configured = Boolean((c.env as any).GITHUB_TOKEN);
+  return c.json({ configured, lastSync: last?.at ?? null, lastResult: last?.detail ? JSON.parse(last.detail) : null });
+});
+
+mcpAdminRoutes.post('/api/admin/sync', async (c) => {
+  const { syncOnce } = await import('../sync');
+  const { getGithubClient } = await import('../github-bind');
+  try {
+    const gh = getGithubClient((c.env as any).GITHUB);
+    const result = await syncOnce({ DB: c.env.DB, ASSETS: c.env.ASSETS, GITHUB: gh });
+    const auth = c.get('auth');
+    await logAudit(c.env.DB, { actor_type: 'user', actor_id: String(auth.userId), action: 'sync.once', detail: result });
+    return c.json({ ok: true, ...result });
+  } catch (e) {
+    return c.json({ ok: false, error: e instanceof Error ? e.message : 'SYNC_FAILED' }, 503);
+  }
+});
