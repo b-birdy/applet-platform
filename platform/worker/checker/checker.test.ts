@@ -55,6 +55,17 @@ describe('table declaration rules', () => {
     expect(rulesOf(issues)).toContain('manifest.table');
   });
 
+  it('flags created_at/id columns with manifest.table (reserved, platform-provided)', () => {
+    for (const reserved of ['created_at', 'id', 'user_id']) {
+      const m = JSON.parse(baseFiles().get('applet.json')!);
+      m.tables[0].columns[0].name = reserved;
+      const issues = checkApplet('demo', baseFiles({ 'applet.json': JSON.stringify(m) }));
+      const hit = issues.find((i) => i.rule === 'manifest.table' && i.level === 'error');
+      expect(hit).toBeDefined();
+      expect(hit!.message).toContain(reserved);
+    }
+  });
+
   it('flags user_id column with manifest.table', () => {
     const m = JSON.parse(baseFiles().get('applet.json')!);
     m.tables[0].columns[0].name = 'user_id';

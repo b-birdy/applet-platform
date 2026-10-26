@@ -17,6 +17,14 @@ export class SchemaChangeError extends Error {
   }
 }
 
+/** 清单声明与平台托管列冲突（id/user_id/created_at）——结构化返回而非 500 */
+export class ReservedColumnError extends Error {
+  constructor(msg: string) {
+    super(msg);
+    this.name = 'ReservedColumnError';
+  }
+}
+
 type Snapshot = Record<string, { columns: Record<string, string> }>;
 
 function readSnapshot(raw: string | null | undefined): Snapshot {
@@ -76,11 +84,18 @@ async function ensureTable(db: D1Database, appletId: string, t: ManifestTable, p
         return parts.join(' ');
       })
       .join(', ');
-    await db
-      .prepare(
-        `CREATE TABLE IF NOT EXISTS "${table}" (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')), ${cols})`
-      )
-      .run();
+    try {
+      await db
+        .prepare(
+          `CREATE TABLE IF NOT EXISTS "${table}" (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')), ${cols})`
+        )
+        .run();
+    } catch (e) {
+      if (e instanceof Error && /duplicate column/i.test(e.message)) {
+        throw new ReservedColumnError(`表 ${t.name} 声明了平台托管列（id/user_id/created_at 由平台自动提供，不可声明）`);
+      }
+      throw e;
+    }
     await db.prepare(`CREATE INDEX IF NOT EXISTS "idx_${table}_user" ON "${table}" (user_id)`).run();
   } else {
     // 只加缺失的列（ALTER TABLE ADD COLUMN）

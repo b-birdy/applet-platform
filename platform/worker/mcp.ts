@@ -2,7 +2,7 @@
 import { SPEC_MD as specMd } from './spec-text';
 import { checkAppletWithSizes } from './checker';
 import { getGithubClientForEnv } from './github-bind';
-import { registerAppletTables, SchemaChangeError, appletTable, type ManifestTable } from './data';
+import { registerAppletTables, SchemaChangeError, ReservedColumnError, appletTable, type ManifestTable } from './data';
 
 const enc = new TextEncoder();
 
@@ -188,8 +188,9 @@ async function submitApplet(env: McpEnv, agent: { id: number; name: string }, ar
     }
     await env.DB.prepare(`UPDATE t_applets SET entry = ?, display = ? WHERE path = ?`).bind(entry, display, appletId).run();
   } catch (e) {
-    if (e instanceof SchemaChangeError) {
-      return toolDenied('SCHEMA_CHANGE', { message: e.message, issues: [{ level: 'error', rule: 'manifest.evolution', file: 'applet.json', message: e.message }] });
+    if (e instanceof SchemaChangeError || e instanceof ReservedColumnError) {
+      const rule = e instanceof ReservedColumnError ? 'manifest.table' : 'manifest.evolution';
+      return toolDenied(e instanceof ReservedColumnError ? 'RESERVED_COLUMN' : 'SCHEMA_CHANGE', { message: e.message, issues: [{ level: 'error', rule, file: 'applet.json', message: e.message }] });
     }
     throw e;
   }

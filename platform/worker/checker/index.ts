@@ -65,14 +65,15 @@ export function checkAppletWithSizes(
         issues.push({ level: 'error', rule: 'manifest.invalid', file: 'applet.json', message: `清单 id "${manifest.id}" 与目录名 "${appletId}" 不符` });
       }
       // 数据表声明校验
+      const RESERVED_COLUMNS = ['user_id', 'id', 'created_at']; // 平台托管列，声明即撞建表
       for (const t of manifest.tables) {
         if (!t.name || !COL_NAME_RE.test(t.name) || !Array.isArray(t.columns)) {
           issues.push({ level: 'error', rule: 'manifest.table', file: 'applet.json', message: `表名不合法或缺 columns: ${JSON.stringify(t.name)}` });
           continue;
         }
         for (const col of t.columns) {
-          if (!col.name || !COL_NAME_RE.test(col.name) || col.name === 'user_id') {
-            issues.push({ level: 'error', rule: 'manifest.table', file: 'applet.json', message: `表 ${t.name} 列名不合法或保留: ${JSON.stringify(col.name)}` });
+          if (!col.name || !COL_NAME_RE.test(col.name) || RESERVED_COLUMNS.includes(col.name)) {
+            issues.push({ level: 'error', rule: 'manifest.table', file: 'applet.json', message: `表 ${t.name} 列名不合法或平台保留（${RESERVED_COLUMNS.join('/')} 由平台自动提供）: ${JSON.stringify(col.name)}` });
           } else if (!col.type || !COL_TYPES.has(col.type)) {
             issues.push({ level: 'error', rule: 'manifest.table', file: 'applet.json', message: `表 ${t.name}.${col.name} 类型不合法: ${JSON.stringify(col.type)}` });
           }
