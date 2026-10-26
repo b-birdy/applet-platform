@@ -75,7 +75,30 @@ async function serveFrom(c: any, prefix: string, slug: string, filePath: string,
     headers['content-security-policy'] =
       `default-src 'none'; script-src ${origin}; style-src ${origin} 'unsafe-inline'; img-src ${origin} data:; font-src ${origin}; connect-src ${origin}; frame-ancestors ${origin}`;
   }
-  return new Response(obj.body, { headers });
+  let body: ReadableStream | string = obj.body;
+  // 主题变量注入：小程序的 style.css 消费平台 CSS 变量（--canvas 等），
+  // 但沙箱 iframe 是独立文档，继承不到平台 SPA 的变量——伺服 HTML 时按用户主题内联注入。
+  if (/\.html?$/i.test(filePath)) {
+    const auth = await getAuth(c.req.raw, c.env.DB);
+    const themeRow = auth
+      ? await c.env.DB.prepare(`SELECT value FROM t_settings WHERE key = ?`).bind(`theme.${auth.userId}`).first() as { value: string } | null
+      : null;
+    const dark = themeRow?.value === 'dark';
+    const themeStyle = dark
+      ? `:root{--canvas:#121816;--panel:#1A211F;--ink:#E6EBE9;--ink-2:#A8B2AF;--ink-3:#6E7A77;--line:#2A332F;--line-strong:#3A4540;--accent:#2FA39A;--accent-weak:#1D3A37;--ok:#4CAF72;--warn:#D29A45;--off:#5F6B68;--danger:#E07070}`
+      : `:root{--canvas:#F6F7F5;--panel:#FFFFFF;--ink:#1C2422;--ink-2:#5A6663;--ink-3:#8B9693;--line:#E3E6E2;--line-strong:#D2D8D4;--accent:#176E68;--accent-weak:#E4F0EE;--ok:#2F8A4C;--warn:#B9791F;--off:#9AA5A2;--danger:#C24E4E}`;
+    const inject = `<style data-platform-theme>${themeStyle}</style>`;
+    let html = await obj.text();
+    // 注入到 <head> 之后（若无 head 标签则前置）
+    if (/<head[^>]*>/i.test(html)) {
+      html = html.replace(/<head[^>]*>/i, (m: string) => `${m}\n${inject}`);
+    } else {
+      html = inject + html;
+    }
+    headers['content-length'] = String(new TextEncoder().encode(html).byteLength);
+    body = html;
+  }
+  return new Response(body, { headers });
 }
 
 function splitPath(raw: string): { slug: string; file: string } | null {

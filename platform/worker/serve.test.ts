@@ -92,6 +92,18 @@ describe('applet static serving', () => {
     expect(csp).not.toMatch(/script-src [^;]*'\//); // script-src 不得含路径源（如 /app-runtime.js，无效源会让整条指令被忽略）
   });
 
+  it('injects platform theme variables into served applet HTML (sandbox iframe cannot inherit parent CSS)', async () => {
+    const r = await SELF.fetch('https://x/app/serving-app/index.html', { headers: { cookie: adminCookie } });
+    const html = await r.text();
+    expect(html).toContain('data-platform-theme');
+    expect(html).toContain('--canvas');
+    expect(html).toContain('--accent');
+    // 注入位置：有 <head> 时在其内，否则前置（两种都先于 body 内容）
+    const headEnd = html.indexOf('</head>');
+    const injectAt = html.indexOf('data-platform-theme');
+    expect(headEnd === -1 ? true : injectAt < headEnd).toBe(true);
+  });
+
   it('serves app-runtime.js placeholder', async () => {
     const r = await SELF.fetch('https://x/app-runtime.js');
     expect(r.status).toBe(200);
