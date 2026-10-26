@@ -93,6 +93,7 @@ await store.batch([{ word: 'a' }, { word: 'b' }]);        // 单事务批量写�
 1. **获取规范**：调用 MCP 工具 `get_spec(section)`（`structure|manifest|data|security|upload` 或缺省全部），按规范开发。
 2. **自检**：调用 `check_applet({ applet_id, files })`——`files` 为相对路径→文本内容的对象。返回 `{ issues: [{ level, rule, file, message }] }`；任何 `level: "error"` 都必须修正后重检，直到零 error。
 3. **上传**：调用 `submit_applet({ applet_id, name, files })`。平台会：再跑一次检查（error 阻断）→ 校验资产体积 → 提交到 git 分支 `applet/<applet_id>`（已存在则 force 更新）→ 已有 open PR 则自动更新同一 PR，否则新建 PR → 你会拿到 `{ pr_number }`。
+   - **注意（HTTP 客户端坑）**：完整文件集通常超过 1KB，curl 会自动加 `Expect: 100-continue` 头，部分服务端会因此返回 500。用 curl 调用时请固定加 `-H "Expect:"` 禁用该头；用 Python requests / Node fetch 则无此问题。
 4. **查进度**：`get_status({ applet_id })` 返回 PR 与检查状态（仅限你有权限的 applet）。
 5. 之后由管理员在平台内审阅 diff、合并 PR；合并后平台自动同步，小程序进入「测试」状态，管理员再手动「启用」。
 6. agent 首次提交某 applet 后即获得该 applet 的操作归属；操作其他 applet 需管理员追加授权（`AGENT_SCOPE` 错误）。
