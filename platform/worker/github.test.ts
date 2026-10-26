@@ -56,8 +56,8 @@ describe('GitHubClient', () => {
     expect(blobs).toHaveLength(2);
     expect(blobs[0].method).toBe('POST');
     expect(blobs[0].headers.authorization).toBe('Bearer t');
-    expect(blobs[0].body.encoding).toBe('base64'); // 文本也以 base64 上传（GitHub blob API）
-    expect(blobs[0].body.content).toBe(btoa('<html></html>')); // base64(utf8(原文))，仓库侧落明文
+    expect(blobs[0].body.encoding).toBe('utf-8'); // 文本直接传，零转换（CPU 限制）
+    expect(blobs[0].body.content).toBe('<html></html>');
     expect(blobs[1].body.encoding).toBe('base64'); // 二进制占位
     expect(blobs[1].body.content).toBe('iVBORw0');
     const tree = recorded.find((r) => r.url === `${API}/git/trees`);

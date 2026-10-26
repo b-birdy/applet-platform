@@ -1,13 +1,8 @@
 // GitHub REST 客户端（裸 fetch，可注入 fetchImpl 供测试）
 export type CommitAuthor = { name: string; email: string };
 
-/** UTF-8 安全的 base64（btoa 原生只认 Latin-1；unescape 在 Workers 不存在） */
-function utf8ToBase64(text: string): string {
-  const bytes = new TextEncoder().encode(text);
-  let bin = '';
-  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
-  return btoa(bin);
-}
+// 注意：文本 blob 直接以 encoding:'utf-8' 上传（GitHub blob API 原生支持）。
+// 不要在这里做 base64 转换——逐字符拼接是 O(n²)，大文件会撑爆 Workers 免费版 10ms CPU。
 export type PutFile = string | { contentBase64: string };
 
 export class NotFound extends Error {
@@ -71,10 +66,10 @@ export class GitHubClient {
     const treeItems: { path: string; mode: string; type: string; sha: string }[] = [];
     for (const [path, content] of files) {
       const isB64 = typeof content !== 'string';
-      // encoding 必须与 content 的实际形态一致：内容统一为 base64（utf8ToBase64 或自带 base64）
+      // 文本走 encoding:'utf-8'（GitHub 原生支持，零转换）；二进制走 base64
       const { status, json } = await this.call('POST', '/git/blobs', {
-        content: isB64 ? content.contentBase64 : utf8ToBase64(content),
-        encoding: 'base64',
+        content: isB64 ? content.contentBase64 : content,
+        encoding: isB64 ? 'base64' : 'utf-8',
       });
       if (status !== 201) throw new Error(`blob ${path}: HTTP ${status}`);
       treeItems.push({ path, mode: '100644', type: 'blob', sha: (json as any).sha });
