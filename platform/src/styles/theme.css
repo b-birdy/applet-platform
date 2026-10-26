@@ -1,0 +1,41 @@
+/* 全局基础样式：苍青工板 */
+* { box-sizing: border-box; }
+html, body, #app { height: 100%; }
+body {
+  margin: 0;
+  font-family: var(--font);
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--ink);
+  background: var(--canvas);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 状态灯（圆点+文字） */
+.st { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--ink-2); }
+.st i { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+.st.ok i { background: var(--ok); }
+.st.warn i { background: var(--warn); }
+.st.off i { background: var(--off); }
+
+/* 字标 */
+.wordmark { display: flex; align-items: center; gap: 9px; }
+.wordmark .glyph { width: 26px; height: 26px; border-radius: 7px; background: var(--accent); position: relative; flex: none; }
+.wordmark .glyph::after {
+  content: ""; position: absolute; inset: 6px 6px 10px 6px; border-radius: 3px;
+  background: var(--panel); opacity: .9;
+}
+.wordmark .glyph::before {
+  content: ""; position: absolute; left: 6px; right: 6px; bottom: 5px; height: 2px;
+  border-radius: 2px; background: var(--panel); opacity: .9;
+}
+.wordmark b { font-size: 16px; font-weight: 700; letter-spacing: .5px; }
+
+/* 登录页方格底纹 */
+.grid-bg {
+  background-image:
+    linear-gradient(var(--line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--line) 1px, transparent 1px);
+  background-size: 56px 56px;
+  opacity: .35;
+}

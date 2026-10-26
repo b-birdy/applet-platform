@@ -1,0 +1,33 @@
+/* D20/D33 设计语言「苍青工板」全部色值与字体：浅色 :root，深色 html.dark 覆盖 */
+:root {
+  --canvas: #F6F7F5;
+  --panel: #FFFFFF;
+  --ink: #1C2422;
+  --ink-2: #5A6663;
+  --ink-3: #8B9693;
+  --line: #E3E6E2;
+  --line-strong: #D2D8D4;
+  --accent: #176E68;
+  --accent-weak: #E4F0EE;
+  --ok: #2F8A4C;
+  --warn: #B9791F;
+  --off: #9AA5A2;
+  --danger: #C24E4E;
+  --font: "IBM Plex Sans", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+}
+
+html.dark {
+  --canvas: #121816;
+  --panel: #1A211F;
+  --ink: #E6EBE9;
+  --ink-2: #A8B2AF;
+  --ink-3: #6E7A77;
+  --line: #2A332F;
+  --line-strong: #3A4540;
+  --accent: #2FA39A;
+  --accent-weak: #1D3A37;
+  --ok: #4CAF72;
+  --warn: #D29A45;
+  --off: #5F6B68;
+  --danger: #E07070;
+}

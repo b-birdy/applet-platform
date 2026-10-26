@@ -1,3 +1,11 @@
+<script setup lang="ts">
+import { onMounted } from 'vue';
+import { useThemeStore } from './stores/theme';
+
+const theme = useThemeStore();
+onMounted(() => theme.init());
+</script>
+
 <template>
-  <div class="wordmark">Applet 平台</div>
+  <router-view />
 </template>
