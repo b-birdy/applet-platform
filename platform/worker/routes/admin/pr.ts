@@ -2,7 +2,7 @@
 import { Hono } from 'hono';
 import { requireRole, type AuthInfo } from '../../auth';
 import { logAudit } from '../../audit';
-import { getGithubClient } from '../../github-bind';
+import { getGithubClientForEnv } from '../../github-bind';
 import { syncOnce, refreshApplet } from '../../sync';
 
 export const prRoutes = new Hono<{ Bindings: { DB: D1Database; ASSETS: R2Bucket; GITHUB: any }; Variables: { auth: AuthInfo } }>();
@@ -17,7 +17,7 @@ prRoutes.post('/api/admin/applets/:id/merge-pr', async (c) => {
   const pr = await c.env.DB.prepare(`SELECT pr_number, branch, state FROM t_prs WHERE applet_id = ? AND state = 'open'`).bind(applet.id).first<{ pr_number: number; branch: string; state: string }>();
   if (!pr) return c.json({ error: 'NO_OPEN_PR' }, 409);
 
-  const gh = getGithubClient(c.env.GITHUB);
+  const gh = getGithubClientForEnv(c.env);
   // 平台 commit author 固定 platform[bot]；合并本身走 GitHub 身份（token 属平台）
   await gh.mergePR(pr.pr_number, (await gh.getHeadSha(pr.branch)) ?? (await gh.getHeadSha('main'))!);
 

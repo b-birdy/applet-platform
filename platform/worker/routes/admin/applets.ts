@@ -6,7 +6,7 @@ import { logAudit } from '../../audit';
 import { dropAppletTables } from '../../data';
 import { checkApplet } from '../../checker';
 import { createAppletRemover } from '../../remover';
-import { getGithubClient } from '../../github-bind';
+import { getGithubClientForEnv } from '../../github-bind';
 
 const STATUSES = new Set(['testing', 'enabled', 'disabled']);
 // D11 状态机: testing⇄enabled⇄disabled；disabled→testing 非法
@@ -28,7 +28,7 @@ export type AppletRemover = { remove(appletId: string): Promise<void> };
 function getRemover(c: any): AppletRemover {
   const wired = (c.env as any).APPLET_REMOVER as AppletRemover | undefined;
   if (wired) return wired;
-  return createAppletRemover({ DB: c.env.DB, ASSETS: c.env.ASSETS, GITHUB: getGithubClient(undefined) });
+  return createAppletRemover({ DB: c.env.DB, ASSETS: c.env.ASSETS, GITHUB: getGithubClientForEnv(c.env) });
 }
 
 adminAppletRoutes.use('/api/admin/applets/*', requireRole('admin'));

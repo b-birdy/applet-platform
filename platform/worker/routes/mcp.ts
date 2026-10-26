@@ -221,9 +221,9 @@ mcpAdminRoutes.get('/api/admin/sync', async (c) => {
 
 mcpAdminRoutes.post('/api/admin/sync', async (c) => {
   const { syncOnce } = await import('../sync');
-  const { getGithubClient } = await import('../github-bind');
+  const { getGithubClientForEnv } = await import('../github-bind');
   try {
-    const gh = getGithubClient((c.env as any).GITHUB);
+    const gh = getGithubClientForEnv(c.env as any);
     const result = await syncOnce({ DB: c.env.DB, ASSETS: c.env.ASSETS, GITHUB: gh });
     const auth = c.get('auth');
     await logAudit(c.env.DB, { actor_type: 'user', actor_id: String(auth.userId), action: 'sync.once', detail: result });

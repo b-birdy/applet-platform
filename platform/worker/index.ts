@@ -11,7 +11,7 @@ import { myRoutes } from './routes/my';
 import { serveRoutes } from './serve';
 import { syncOnce } from './sync';
 import { GitHubClient } from './github';
-import { getGithubClient } from './github-bind';
+import { getGithubClientForEnv } from './github-bind';
 import { createAppletRemover } from './remover';
 import { requireAuth, type AuthInfo } from './auth';
 
@@ -31,11 +31,7 @@ const app = new Hono<{ Bindings: Bindings; Variables: { auth: AuthInfo } }>();
 
 // GitHub 客户端组装（测试注入 GITHUB env 或 github-bind override 时优先）
 function githubOf(env: Bindings & { GITHUB?: GitHubClient }): GitHubClient {
-  if ((env as any).GITHUB) return (env as any).GITHUB;
-  if (!env.GITHUB_TOKEN || !env.GITHUB_OWNER || !env.GITHUB_REPO) {
-    throw new Error('GitHub not configured (GITHUB_TOKEN/GITHUB_OWNER/GITHUB_REPO secrets)');
-  }
-  return getGithubClient(new GitHubClient(env.GITHUB_TOKEN, env.GITHUB_OWNER, env.GITHUB_REPO));
+  return getGithubClientForEnv(env);
 }
 
 // remover 接线：applet DELETE 路由的 env.APPLET_REMOVER

@@ -2,6 +2,7 @@
 import { Hono } from 'hono';
 import { hmacSha256Hex } from '../tokens';
 import { syncOnce, syncPreview } from '../sync';
+import { getGithubClientForEnv } from '../github-bind';
 
 export const hookRoutes = new Hono<{ Bindings: { DB: D1Database; ASSETS: R2Bucket; GITHUB: any; GH_WEBHOOK_SECRET?: string } }>();
 
@@ -20,7 +21,7 @@ hookRoutes.post('/api/hooks/github', async (c) => {
   if (event === 'push' && payload.ref === 'refs/heads/main') {
     // 同步失败仍返回 200（避免 GitHub 对配置类错误无限重试）；cron 每 5 分钟兜底
     try {
-      const result = await syncOnce({ DB: c.env.DB, ASSETS: c.env.ASSETS, GITHUB: c.env.GITHUB });
+      const result = await syncOnce({ DB: c.env.DB, ASSETS: c.env.ASSETS, GITHUB: getGithubClientForEnv(c.env) });
       return c.json({ ok: true, ...result });
     } catch (e) {
       console.error('webhook syncOnce failed:', e);
@@ -35,7 +36,7 @@ hookRoutes.post('/api/hooks/github', async (c) => {
     const m = typeof branch === 'string' ? branch.match(/^applet\/([^/]+)$/) : null;
     if (m) {
       try {
-        await syncPreview({ DB: c.env.DB, ASSETS: c.env.ASSETS, GITHUB: c.env.GITHUB }, m[1], branch);
+        await syncPreview({ DB: c.env.DB, ASSETS: c.env.ASSETS, GITHUB: getGithubClientForEnv(c.env) }, m[1], branch);
         return c.json({ ok: true, preview: m[1] });
       } catch (e) {
         console.error('webhook syncPreview failed:', e);
