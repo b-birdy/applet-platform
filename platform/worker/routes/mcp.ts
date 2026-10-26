@@ -69,7 +69,7 @@ mcpRoutes.post('/mcp', async (c) => {
     case 'tools/call': {
       const name = params?.name;
       if (typeof name !== 'string') return c.json(rpcError(id, -32602, 'Invalid params: name required').body);
-      const result = await dispatchTool({ DB: c.env.DB, ASSETS: c.env.ASSETS, GITHUB: null }, auth, name, params?.arguments ?? {});
+      const result = await dispatchTool(c.env, auth, name, params?.arguments ?? {});
       // 工具输出（含拒绝）都作为 JSON-RPC result 返回；HTTP 状态仅表达传输层语义
       return c.json({ jsonrpc: '2.0', id, result: result.body }, result.status as any);
     }

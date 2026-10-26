@@ -1,7 +1,7 @@
 // MCP 服务内核：JSON-RPC 2.0 分发 + agent 工具（无状态）
 import { SPEC_MD as specMd } from './spec-text';
 import { checkAppletWithSizes } from './checker';
-import { getGithubClient } from './github-bind';
+import { getGithubClientForEnv } from './github-bind';
 import { registerAppletTables, SchemaChangeError, appletTable, type ManifestTable } from './data';
 
 const enc = new TextEncoder();
@@ -61,7 +61,10 @@ export function extractSection(md: string, section: string): string | null {
 export type McpEnv = {
   DB: D1Database;
   ASSETS: R2Bucket;
-  GITHUB: any; // 延迟经 getGithubClient 解析
+  GITHUB?: unknown;
+  GITHUB_TOKEN?: string;
+  GITHUB_OWNER?: string;
+  GITHUB_REPO?: string;
 };
 
 export type AuthCtx =
@@ -153,7 +156,7 @@ async function submitApplet(env: McpEnv, agent: { id: number; name: string }, ar
     return { status: 200, body: wrapTool({ ok: false, issues }) };
   }
 
-  const gh = getGithubClient(undefined);
+  const gh = getGithubClientForEnv(env);
   const files = args?.files ?? {};
   let entry: string | null = null;
   let display = 'embed';
