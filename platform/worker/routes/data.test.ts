@@ -102,6 +102,25 @@ describe('per-user isolation', () => {
   });
 });
 
+describe('CORS for sandboxed iframes (blank-page bug part 2)', () => {
+  it('Data API responses carry ACAO:* (bearer-token API, no ambient credentials)', async () => {
+    const r = await SELF.fetch(BASE, { headers: { authorization: `Bearer ${tokenA}`, origin: 'null' } });
+    expect(r.status).toBe(200);
+    expect(r.headers.get('access-control-allow-origin')).toBe('*');
+  });
+
+  it('OPTIONS preflight returns 204 with allowed headers', async () => {
+    const pre = await SELF.fetch(BASE, {
+      method: 'OPTIONS',
+      headers: { origin: 'null', 'access-control-request-method': 'POST', 'access-control-request-headers': 'authorization, content-type' },
+    });
+    expect(pre.status).toBe(204);
+    expect(pre.headers.get('access-control-allow-origin')).toBe('*');
+    expect(pre.headers.get('access-control-allow-headers')).toContain('authorization');
+    expect(pre.headers.get('access-control-allow-methods')).toContain('POST');
+  });
+});
+
 describe('validation', () => {
   it('rejects unknown column with 400 BAD_COLUMN', async () => {
     const r = await SELF.fetch(`${BASE}?column=evil`, { headers: { cookie: cookieA } });

@@ -29,8 +29,23 @@ async function resolveUser(c: any, appletId: string): Promise<AuthInfo | 'SCOPE'
 
 export const dataRoutes = new Hono<DataEnv>();
 
-dataRoutes.use('/api/data/:appletId/:table/*', async (c, next) => { await next(); });
-dataRoutes.use('/api/data/:appletId/:table', async (c, next) => { await next(); });
+// CORS：小程序跑在沙箱 iframe（Origin: null）里，对 Data API 的 fetch 是跨域请求。
+// 本 API 纯 Bearer-token 鉴权、不依赖 cookie 等环境凭据，ACAO:* 不放宽任何边界。
+dataRoutes.use('/api/data/*', async (c, next) => {
+  if (c.req.method === 'OPTIONS') {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        'access-control-allow-origin': '*',
+        'access-control-allow-methods': 'GET, POST, PUT, DELETE, OPTIONS',
+        'access-control-allow-headers': 'authorization, content-type',
+        'access-control-max-age': '86400',
+      },
+    });
+  }
+  await next();
+  c.res.headers.set('access-control-allow-origin', '*');
+});
 
 async function requireAccess(c: any, appletId: string): Promise<AuthInfo | { error: [number, string] }> {
   const auth = await resolveUser(c, appletId);
