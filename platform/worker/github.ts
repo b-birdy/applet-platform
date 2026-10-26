@@ -71,9 +71,10 @@ export class GitHubClient {
     const treeItems: { path: string; mode: string; type: string; sha: string }[] = [];
     for (const [path, content] of files) {
       const isB64 = typeof content !== 'string';
+      // encoding 必须与 content 的实际形态一致：内容统一为 base64（utf8ToBase64 或自带 base64）
       const { status, json } = await this.call('POST', '/git/blobs', {
         content: isB64 ? content.contentBase64 : utf8ToBase64(content),
-        encoding: isB64 ? 'base64' : 'utf-8',
+        encoding: 'base64',
       });
       if (status !== 201) throw new Error(`blob ${path}: HTTP ${status}`);
       treeItems.push({ path, mode: '100644', type: 'blob', sha: (json as any).sha });
