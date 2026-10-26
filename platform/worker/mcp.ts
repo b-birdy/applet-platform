@@ -1,5 +1,5 @@
 // MCP 服务内核：JSON-RPC 2.0 分发 + agent 工具（无状态）
-import specMd from '../../docs/applet-spec.md?raw';
+import { SPEC_MD as specMd } from './spec-text';
 import { checkAppletWithSizes } from './checker';
 import { getGithubClient } from './github-bind';
 import { registerAppletTables, SchemaChangeError, type ManifestTable } from './data';

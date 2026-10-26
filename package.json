@@ -9,7 +9,8 @@
   "scripts": {
     "test": "vitest run",
     "build": "vue-tsc -b && vite build",
-    "check:applets": "tsx platform/worker/checker/cli.ts applets"
+    "check:applets": "tsx platform/worker/checker/cli.ts applets",
+    "gen:spec": "node scripts/gen-spec.mjs"
   },
   "dependencies": {
     "element-plus": "^2.14.7",

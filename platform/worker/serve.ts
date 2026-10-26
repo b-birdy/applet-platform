@@ -98,7 +98,7 @@ serveRoutes.get('/preview/:slug{.*}', async (c) => {
 });
 
 // 内置运行时（真身：平台注入凭据 + window.applet 数据接口）
-import runtimeJs from './applet-runtime.js?raw';
+import { RUNTIME_JS as runtimeJs } from './runtime-text';
 serveRoutes.get('/app-runtime.js', () =>
   new Response(runtimeJs, {
     headers: { 'content-type': 'application/javascript; charset=utf-8', 'cache-control': 'no-store' },

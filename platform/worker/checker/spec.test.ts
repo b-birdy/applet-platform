@@ -56,6 +56,12 @@ describe('applet spec doc (MCP get_spec content source)', () => {
     }
   });
 
+  it('generated spec-text.ts is in sync with docs/applet-spec.md', async () => {
+    // node 池可读盘：逐字比对，改文档忘跑 pnpm gen:spec 会在这里红
+    const { SPEC_MD } = await import('../spec-text');
+    expect(SPEC_MD).toBe(readFileSync(SPEC_PATH, 'utf-8'));
+  });
+
   it('documents the runtime data API surface', () => {
     for (const api of ['list', 'create', 'update', 'remove', 'batch']) {
       expect(spec).toContain(api);
