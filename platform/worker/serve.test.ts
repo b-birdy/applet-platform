@@ -87,6 +87,8 @@ describe('applet static serving', () => {
     const csp = r.headers.get('content-security-policy') ?? '';
     expect(csp).toContain('https://x');
     expect(csp).not.toMatch(/script-src [^;]*'self'/); // 'self' 在不透明 origin 下失效，不得只依赖它
+    expect(csp).not.toContain("frame-ancestors 'none'"); // 平台自身要嵌入 iframe，须允许本站
+    expect(csp).toMatch(/frame-ancestors https:\/\//);
   });
 
   it('serves app-runtime.js placeholder', async () => {
