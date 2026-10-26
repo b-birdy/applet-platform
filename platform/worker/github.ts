@@ -162,4 +162,19 @@ export class GitHubClient {
       .filter((e) => e.type === 'blob' && e.path.startsWith('applets/'))
       .map((e) => ({ path: e.path, size: e.size }));
   }
+
+  /** 拉取单文件原始字节（raw media type，二进制安全）；404 → null */
+  async getContent(ref: string, path: string): Promise<Uint8Array | null> {
+    const url = `${this.api}/contents/${path.split('/').map(encodeURIComponent).join('/')}?ref=${encodeURIComponent(ref)}`;
+    const res = await this.fetchImpl(url, {
+      headers: {
+        authorization: `Bearer ${this.token}`,
+        accept: 'application/vnd.github.raw',
+        'user-agent': 'applet-platform',
+      },
+    });
+    if (res.status === 404) return null;
+    if (res.status !== 200) throw new Error(`getContent ${path}: HTTP ${res.status}`);
+    return new Uint8Array(await res.arrayBuffer());
+  }
 }

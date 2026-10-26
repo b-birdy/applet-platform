@@ -27,6 +27,13 @@ export async function signAppletToken(payload: AppletTokenPayload, key: string):
   return `${body}.${sig}`;
 }
 
+// webhook 签名校验用
+export async function hmacSha256Hex(key: string, message: string): Promise<string> {
+  const k = await crypto.subtle.importKey('raw', enc.encode(key), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const sig = await crypto.subtle.sign('HMAC', k, enc.encode(message));
+  return Array.from(new Uint8Array(sig), (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
 export async function verifyAppletToken(token: string, key: string): Promise<AppletTokenPayload | null> {
   const dot = token.lastIndexOf('.');
   if (dot <= 0) return null;

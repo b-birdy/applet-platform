@@ -14,6 +14,7 @@ export default defineConfig({
               bindings: {
                 ADMIN_INIT_PASSWORD: 'test-admin-init',
                 MCP_SIGNING_KEY: 'test-signing-key',
+                GH_WEBHOOK_SECRET: 'test-hook-secret',
               },
             },
           }),

@@ -28,7 +28,8 @@ CREATE TABLE t_applets (
   status TEXT NOT NULL DEFAULT 'testing',
   entry TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  sync_commit TEXT
+  sync_commit TEXT,
+  missing INTEGER NOT NULL DEFAULT 0
 );
 CREATE UNIQUE INDEX idx_applets_path ON t_applets(path);
 
