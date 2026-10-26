@@ -71,7 +71,7 @@ npx wrangler deploy
 npx wrangler secret put ADMIN_INIT_PASSWORD  # 依次配置全部 Secrets
 ```
 
-> Workers Builds 路径下同样需要先跑一次 schema 初始化（本地 `npx wrangler d1 execute applet-platform-db --file=platform/worker/db/schema.sql --remote`），首次 `/api/setup` 才能工作。
+> schema 初始化已内置自迁移：全新数据库首次访问 `/api/setup` 时自动建表，无需手动执行 D1 初始化。（也可手动跑 `npx wrangler d1 execute applet-platform-db --file=platform/worker/db/schema.sql --remote` 预建。）
 
 ## Agent 接入指南
 

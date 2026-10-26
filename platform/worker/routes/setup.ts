@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { hashPassword, createSession } from '../auth';
 import { logAudit } from '../audit';
+import { applySchema } from '../db/apply';
 
 const DEFAULT_SETTINGS: Record<string, string> = {
   site_name: 'Applet 平台',
@@ -13,13 +14,22 @@ const DEFAULT_SETTINGS: Record<string, string> = {
 
 export const setupRoutes = new Hono<{ Bindings: { DB: D1Database; ADMIN_INIT_PASSWORD?: string } }>();
 
+// 部署自迁移：全新库（没跑过 wrangler d1 execute）首次访问时自动建表。
+// 幂等：已初始化的库跳过。失败（如缺权限）时抛给上层返回 500。
+async function ensureSchema(db: D1Database): Promise<void> {
+  const t = await db.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='t_users'`).first();
+  if (!t) await applySchema(db);
+}
+
 setupRoutes.get('/api/setup', async (c) => {
+  await ensureSchema(c.env.DB);
   const row = await c.env.DB.prepare(`SELECT COUNT(*) AS n FROM t_users`).first<{ n: number }>();
   return c.json({ needsInit: (row?.n ?? 0) === 0 });
 });
 
 setupRoutes.post('/api/setup', async (c) => {
   const db = c.env.DB;
+  await ensureSchema(db);
   const body = await c.req.json<{ adminPassword?: string; newPassword?: string }>().catch(() => null);
   const existing = await db.prepare(`SELECT COUNT(*) AS n FROM t_users`).first<{ n: number }>();
   if ((existing?.n ?? 0) > 0) return c.json({ error: 'ALREADY_INITIALIZED' }, 403);
