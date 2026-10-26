@@ -4,6 +4,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 const jobs = [
   ['docs/applet-spec.md', 'platform/worker/spec-text.ts', 'SPEC_MD', 'Applet 小程序开发规范'],
   ['platform/worker/applet-runtime.js', 'platform/worker/runtime-text.ts', 'RUNTIME_JS', 'window.applet'],
+  ['platform/worker/db/schema.sql', 'platform/worker/db/schema-text.ts', 'SCHEMA_SQL', 'CREATE TABLE'],
 ];
 for (const [src, out, name] of jobs) {
   const text = readFileSync(src, 'utf-8');

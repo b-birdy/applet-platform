@@ -1,4 +1,4 @@
-import schemaSql from './schema.sql?raw';
+import { SCHEMA_SQL as schemaSql } from './schema-text';
 
 // dev 应用 schema：wrangler d1 execute applet-platform --file=platform/worker/db/schema.sql --local|--remote
 // 测试内用本 helper（D1 exec 按换行拆分不可靠，故自行按 ';' 拆分后 batch）
