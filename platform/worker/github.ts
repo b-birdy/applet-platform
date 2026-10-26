@@ -101,13 +101,14 @@ export class GitHubClient {
     if (commitStatus !== 201) throw new Error(`commit: HTTP ${commitStatus}`);
     const newSha = (commitJson as any).sha as string;
 
-    // 5. 更新/创建分支引用（force：幂等 force-push；ref 不存在时兜底创建）
-    const refPath = `/git/refs/heads/${this.encPath(branch)}`;
-    const { status } = await this.call('PATCH', refPath, { sha: newSha, force: true });
-    if (status === 404) {
+    // 5. 更新/创建分支引用：GitHub 对 PATCH 不存在的 ref 返回 422（非 404），
+    //    不赌状态码——先查分支是否存在再决定更新还是创建
+    const branchSha = await this.getHeadSha(branch);
+    if (branchSha) {
+      const { status } = await this.call('PATCH', `/git/refs/heads/${this.encPath(branch)}`, { sha: newSha, force: true });
+      if (status !== 200) throw new Error(`update ref: HTTP ${status}`);
+    } else {
       await this.createBranch(branch, newSha);
-    } else if (status !== 200) {
-      throw new Error(`update ref: HTTP ${status}`);
     }
     return newSha;
   }

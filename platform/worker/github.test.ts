@@ -42,6 +42,7 @@ describe('GitHubClient', () => {
       { match: (m, u) => m === 'GET' && u === `${API}/git/commits/base1`, reply: () => ({ status: 200, body: { tree_sha: 'treebase' } }) },
       { match: (m, u) => m === 'POST' && u === `${API}/git/trees`, reply: () => ({ status: 201, body: { sha: 'tree1' } }) },
       { match: (m, u) => m === 'POST' && u === `${API}/git/commits`, reply: () => ({ status: 201, body: { sha: 'commit1' } }) },
+      { match: (m, u) => m === 'GET' && u === `${API}/git/ref/heads/applet%2Fdemo`, reply: () => ({ status: 200, body: { object: { sha: 'old1' } } }) },
       { match: (m, u) => m === 'PATCH' && u === `${API}/git/refs/heads/applet%2Fdemo`, reply: () => ({ status: 200, body: { object: { sha: 'commit1' } } }) },
     ]);
     const gh = new GitHubClient('t', 'o', 'r', impl);
@@ -69,6 +70,27 @@ describe('GitHubClient', () => {
     expect(ref!.method).toBe('PATCH');
     expect(ref!.body.sha).toBe('commit1');
     expect(ref!.body.force).toBe(true);
+  });
+
+  it('putFiles creates branch when branch ref does not exist (GitHub 422 quirk avoided)', async () => {
+    const { impl, recorded } = makeFetch([
+      { match: (m, u) => m === 'POST' && u === `${API}/git/blobs`, reply: () => ({ status: 201, body: { sha: 'blob1' } }) },
+      { match: (m, u) => m === 'GET' && u === `${API}/git/ref/heads/main`, reply: () => ({ status: 200, body: { object: { sha: 'base1' } } }) },
+      { match: (m, u) => m === 'GET' && u === `${API}/git/commits/base1`, reply: () => ({ status: 200, body: { tree_sha: 'treebase' } }) },
+      { match: (m, u) => m === 'POST' && u === `${API}/git/trees`, reply: () => ({ status: 201, body: { sha: 'tree1' } }) },
+      { match: (m, u) => m === 'POST' && u === `${API}/git/commits`, reply: () => ({ status: 201, body: { sha: 'commit1' } }) },
+      { match: (m, u) => m === 'GET' && u === `${API}/git/ref/heads/applet%2Fnewb`, reply: () => ({ status: 404, body: { message: 'Not Found' } }) },
+      { match: (m, u) => m === 'POST' && u === `${API}/git/refs`, reply: () => ({ status: 201, body: {} }) },
+    ]);
+    const gh = new GitHubClient('t', 'o', 'r', impl);
+    const files = new Map<string, string | { contentBase64: string }>();
+    files.set('applets/newb/index.html', '<html></html>');
+    const sha = await gh.putFiles('applet/newb', files, 'msg', { name: 'a[1]', email: 'a@x' });
+    expect(sha).toBe('commit1');
+    const create = recorded.find((r) => r.url === `${API}/git/refs` && r.method === 'POST');
+    expect(create).toBeDefined();
+    expect(create!.body.ref).toBe('refs/heads/applet/newb');
+    expect(create!.body.sha).toBe('commit1');
   });
 
   it('getPR 404 throws NotFound', async () => {
