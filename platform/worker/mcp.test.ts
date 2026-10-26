@@ -275,6 +275,57 @@ describe('submit flow (approved agent)', () => {
     expect(toolResult(res2.json).pr_number).toBe(1);
   });
 
+  it('resubmit with large files onto existing branch (prod 500 reproduction)', async () => {
+    // 生产路径：占位 PR 已存在（closed）→ openPR 复用 → 更新分支。大文件集（>100KB 明文）
+    const code = await makeAccessCode();
+    await callTool('agent_apply', { name: 'big-payload', fingerprint: 'fp-big' }, code);
+    const bid = (await env.DB.prepare(`SELECT id FROM t_agents WHERE name='big-payload'`).first<any>()).id;
+    const r0 = await SELF.fetch(`https://x/api/admin/agents/${bid}/approve`, { method: 'POST', headers: { cookie: adminCookie }, body: '{}' });
+    const bk = (await r0.json() as any).key;
+
+    const bigBody = 'x'.repeat(60_000);
+    const files = {
+      'applet.json': (GOOD_FILES['applet.json'] as string).replace('mcapp', 'bigapp'),
+      'index.html': GOOD_FILES['index.html'],
+      'big.js': `/* ${bigBody} */`,
+    };
+    const { gh, putFiles, openPR } = makeGithubStub();
+    setGithubClient(gh);
+    const res = await callTool('submit_applet', { applet_id: 'bigapp', name: 'Big', files }, bk);
+    expect(res.status).toBe(200);
+    expect(toolResult(res.json).pr_number).toBe(42); // stub 默认值；断言重点是流程走通
+    expect(putFiles).toHaveBeenCalledTimes(1);
+  });
+
+  it('openPR 422 (historical PR on branch) triggers branch rebuild + retry', async () => {
+    const code = await makeAccessCode();
+    await callTool('agent_apply', { name: 'rebuild-agent', fingerprint: 'fp-rb2' }, code);
+    const rid = (await env.DB.prepare(`SELECT id FROM t_agents WHERE name='rebuild-agent'`).first<any>()).id;
+    const r0 = await SELF.fetch(`https://x/api/admin/agents/${rid}/approve`, { method: 'POST', headers: { cookie: adminCookie }, body: '{}' });
+    const rk = (await r0.json() as any).key;
+
+    let openPRCalls = 0;
+    const gh = {
+      async getTree() { return []; },
+      async getContent() { return null; },
+      async getHeadSha() { return null; },
+      async putFiles() { return 'sha-' + ++openPRCalls; },
+      async openPR() { openPRCalls++; if (openPRCalls <= 2) throw new Error('openPR: HTTP 422 already exists'); return 30; },
+      async deleteBranch() { return; },
+      async getPR() { return { state: 'open' as const, head: 'x', mergeable: true }; },
+      async mergePR() {},
+      async deleteDir() { return 'x'; },
+    } as unknown as GitHubClient;
+    setGithubClient(gh);
+
+    const files = { ...GOOD_FILES, 'applet.json': (GOOD_FILES['applet.json'] as string).replace('mcapp', 'rb3-app') };
+    const res = await callTool('submit_applet', { applet_id: 'rb3-app', name: 'RB3', files }, rk);
+    expect(res.status).toBe(200);
+    expect(toolResult(res.json).pr_number).toBe(30);
+    // putFiles 被调用两次（原始 + 分支重建后重放）
+    expect(openPRCalls).toBe(4); // putFiles x2 + openPR x2 计数
+  });
+
   it('revoked key is rejected immediately (Review Focus 3)', async () => {
     const r = await SELF.fetch(`https://x/api/admin/agents/${agentId}/revoke`, { method: 'POST', headers: { cookie: adminCookie }, body: '{}' });
     expect(r.status).toBe(200);

@@ -206,7 +206,16 @@ async function submitApplet(env: McpEnv, agent: { id: number; name: string }, ar
     if (open) {
       prNumber = open.pr_number;
     } else {
-      prNumber = await gh.openPR(`Applet: ${displayName} (${appletId})`, `applet/${appletId}`, 'main');
+      try {
+        prNumber = await gh.openPR(`Applet: ${displayName} (${appletId})`, `applet/${appletId}`, 'main');
+      } catch (e) {
+        // 该分支曾有历史 PR（closed/merged）时 GitHub 拒绝再开（422）。
+        // 出路：删分支引用 → 重放 putFiles（新提交）→ 再开 PR（新分支引用无历史）。
+        if (!(e instanceof Error) || !/422/.test(e.message)) throw e;
+        await gh.deleteBranch(`applet/${appletId}`);
+        await gh.putFiles(`applet/${appletId}`, fileMap, `submit applet ${appletId} by agent ${agent.id} (branch rebuilt)`, author);
+        prNumber = await gh.openPR(`Applet: ${displayName} (${appletId})`, `applet/${appletId}`, 'main');
+      }
     }
   } catch (e) {
     // 回滚本次新建的注册行/表，让 agent 可以原样重试
