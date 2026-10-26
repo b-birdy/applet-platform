@@ -6,6 +6,7 @@ import { adminUserRoutes } from './routes/admin/users';
 import { adminAppletRoutes } from './routes/admin/applets';
 import { hookRoutes } from './routes/hooks';
 import { prRoutes } from './routes/admin/pr';
+import { mcpRoutes, mcpAdminRoutes } from './routes/mcp';
 import { serveRoutes } from './serve';
 import { syncOnce } from './sync';
 import { GitHubClient } from './github';
@@ -49,6 +50,8 @@ app.route('/', adminUserRoutes);
 app.route('/', adminAppletRoutes);
 app.route('/', hookRoutes);
 app.route('/', prRoutes);
+app.route('/', mcpRoutes);
+app.route('/', mcpAdminRoutes);
 app.route('/', serveRoutes);
 // 示例受保护路由：验证 requireAuth 中间件可用
 app.get('/api/whoami', requireAuth(), (c) => c.json(c.get('auth')));
