@@ -73,7 +73,7 @@ async function serveFrom(c: any, prefix: string, slug: string, filePath: string,
   if (/\.html?$/i.test(filePath)) {
     const origin = new URL(c.req.url).origin;
     headers['content-security-policy'] =
-      `default-src 'none'; script-src ${origin} /app-runtime.js; style-src ${origin} 'unsafe-inline'; img-src ${origin} data:; font-src ${origin}; connect-src ${origin}; frame-ancestors ${origin}`;
+      `default-src 'none'; script-src ${origin}; style-src ${origin} 'unsafe-inline'; img-src ${origin} data:; font-src ${origin}; connect-src ${origin}; frame-ancestors ${origin}`;
   }
   return new Response(obj.body, { headers });
 }

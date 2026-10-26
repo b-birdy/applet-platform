@@ -89,6 +89,7 @@ describe('applet static serving', () => {
     expect(csp).not.toMatch(/script-src [^;]*'self'/); // 'self' 在不透明 origin 下失效，不得只依赖它
     expect(csp).not.toContain("frame-ancestors 'none'"); // 平台自身要嵌入 iframe，须允许本站
     expect(csp).toMatch(/frame-ancestors https:\/\//);
+    expect(csp).not.toMatch(/script-src [^;]*'\//); // script-src 不得含路径源（如 /app-runtime.js，无效源会让整条指令被忽略）
   });
 
   it('serves app-runtime.js placeholder', async () => {
