@@ -61,8 +61,12 @@ export class GitHubClient {
     if (status !== 201) throw new Error(`createBranch ${name}: HTTP ${status} ${JSON.stringify(json)}`);
   }
 
-  /** blob → tree → commit → 更新引用；返回新 commit sha */
-  async putFiles(branch: string, files: Map<string, PutFile>, message: string, author: CommitAuthor): Promise<string> {
+  /**
+   * blob → tree → commit → 更新引用；返回新 commit sha。
+   * 提交永远以 baseRef（默认 main）的 head 为父：保证与 base 有共同祖先（PR 前提），
+   * 且 force-push 语义幂等——孤儿分支会被自愈。分支不存在时自动创建。
+   */
+  async putFiles(branch: string, files: Map<string, PutFile>, message: string, author: CommitAuthor, baseRef = 'main'): Promise<string> {
     // 1. blobs
     const treeItems: { path: string; mode: string; type: string; sha: string }[] = [];
     for (const [path, content] of files) {
@@ -75,8 +79,8 @@ export class GitHubClient {
       treeItems.push({ path, mode: '100644', type: 'blob', sha: (json as any).sha });
     }
 
-    // 2. 父 commit 与 base tree
-    const baseSha = await this.getHeadSha(branch);
+    // 2. 父 commit（取 baseRef 的 head，保证 PR 可建）与 base tree
+    const baseSha = await this.getHeadSha(baseRef);
     let baseTree: string | undefined;
     if (baseSha) {
       const { json } = await this.call('GET', `/git/commits/${baseSha}`);
@@ -97,13 +101,13 @@ export class GitHubClient {
     if (commitStatus !== 201) throw new Error(`commit: HTTP ${commitStatus}`);
     const newSha = (commitJson as any).sha as string;
 
-    // 5. 更新引用（force 以容忍 force-push 语义）
+    // 5. 更新/创建分支引用（force：幂等 force-push；ref 不存在时兜底创建）
     const refPath = `/git/refs/heads/${this.encPath(branch)}`;
-    if (baseSha) {
-      const { status } = await this.call('PATCH', refPath, { sha: newSha, force: true });
-      if (status !== 200) throw new Error(`update ref: HTTP ${status}`);
-    } else {
+    const { status } = await this.call('PATCH', refPath, { sha: newSha, force: true });
+    if (status === 404) {
       await this.createBranch(branch, newSha);
+    } else if (status !== 200) {
+      throw new Error(`update ref: HTTP ${status}`);
     }
     return newSha;
   }

@@ -38,7 +38,7 @@ describe('GitHubClient', () => {
   it('putFiles runs blob->tree->commit and updates ref, returns sha', async () => {
     const { impl, recorded } = makeFetch([
       { match: (m, u) => m === 'POST' && u === `${API}/git/blobs`, reply: () => ({ status: 201, body: { sha: 'blob1' } }) },
-      { match: (m, u) => m === 'GET' && u === `${API}/git/ref/heads/applet%2Fdemo`, reply: () => ({ status: 200, body: { object: { sha: 'base1' } } }) },
+      { match: (m, u) => m === 'GET' && u === `${API}/git/ref/heads/main`, reply: () => ({ status: 200, body: { object: { sha: 'base1' } } }) },
       { match: (m, u) => m === 'GET' && u === `${API}/git/commits/base1`, reply: () => ({ status: 200, body: { tree_sha: 'treebase' } }) },
       { match: (m, u) => m === 'POST' && u === `${API}/git/trees`, reply: () => ({ status: 201, body: { sha: 'tree1' } }) },
       { match: (m, u) => m === 'POST' && u === `${API}/git/commits`, reply: () => ({ status: 201, body: { sha: 'commit1' } }) },
@@ -63,7 +63,7 @@ describe('GitHubClient', () => {
     expect(tree!.body.tree).toHaveLength(2);
     expect(tree!.body.tree[0].path).toBe('applets/demo/index.html');
     const commit = recorded.find((r) => r.url === `${API}/git/commits` && r.method === 'POST');
-    expect(commit!.body.parents).toEqual(['base1']);
+    expect(commit!.body.parents).toEqual(['base1']); // 父提交是 baseRef(main) 的 head——保证 PR 可建
     expect(commit!.body.author.name).toBe('applet-agent[3]');
     const ref = recorded.find((r) => r.url === `${API}/git/refs/heads/applet%2Fdemo`);
     expect(ref!.method).toBe('PATCH');
