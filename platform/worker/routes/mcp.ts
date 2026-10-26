@@ -69,7 +69,15 @@ mcpRoutes.post('/mcp', async (c) => {
     case 'tools/call': {
       const name = params?.name;
       if (typeof name !== 'string') return c.json(rpcError(id, -32602, 'Invalid params: name required').body);
-      const result = await dispatchTool(c.env, auth, name, params?.arguments ?? {});
+      // 兜底：未捕获异常一律转结构化错误（裸 500 会让 agent 陷入盲目二分排查）
+      let result;
+      try {
+        result = await dispatchTool(c.env, auth, name, params?.arguments ?? {});
+      } catch (e) {
+        console.error(`mcp tools/call ${name} failed:`, e);
+        const body = wrapTool({ ok: false, error: 'INTERNAL_ERROR', message: e instanceof Error ? e.message : String(e) });
+        return c.json({ jsonrpc: '2.0', id, result: body }, 500 as any);
+      }
       // 工具输出（含拒绝）都作为 JSON-RPC result 返回；HTTP 状态仅表达传输层语义
       return c.json({ jsonrpc: '2.0', id, result: result.body }, result.status as any);
     }
