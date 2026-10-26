@@ -231,7 +231,11 @@ async function submitApplet(env: McpEnv, agent: { id: number; name: string }, ar
     return toolDenied('GIT_SUBMIT_FAILED', { message: e instanceof Error ? e.message : 'git submit failed', applet_id: appletId });
   }
   if (createdHere || !(await env.DB.prepare(`SELECT 1 AS ok FROM t_prs WHERE applet_id = ? AND state = 'open'`).bind(appletRowId).first())) {
-    await env.DB.prepare(`INSERT INTO t_prs (applet_id, pr_number, branch, state) VALUES (?, ?, ?, 'open')`).bind(appletRowId, prNumber, `applet/${appletId}`).run();
+    // upsert：同 applet 可能存在历史 merged 行（t_prs 主键是 applet_id）
+    await env.DB.prepare(
+      `INSERT INTO t_prs (applet_id, pr_number, branch, state) VALUES (?, ?, ?, 'open')
+       ON CONFLICT(applet_id) DO UPDATE SET pr_number = excluded.pr_number, branch = excluded.branch, state = 'open'`
+    ).bind(appletRowId, prNumber, `applet/${appletId}`).run();
     await env.DB.prepare(`INSERT INTO t_agent_applets (agent_id, applet_id, source) VALUES (?, ?, 'submitted') ON CONFLICT DO NOTHING`).bind(agent.id, appletRowId).run();
   }
 

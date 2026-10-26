@@ -326,6 +326,33 @@ describe('submit flow (approved agent)', () => {
     expect(openPRCalls).toBe(4); // putFiles x2 + openPR x2 计数
   });
 
+  it('resubmit upserts t_prs when a merged row exists (UNIQUE constraint fix)', async () => {
+    const code = await makeAccessCode();
+    await callTool('agent_apply', { name: 'upsert-agent', fingerprint: 'fp-up' }, code);
+    const uid = (await env.DB.prepare(`SELECT id FROM t_agents WHERE name='upsert-agent'`).first<any>()).id;
+    const r0 = await SELF.fetch(`https://x/api/admin/agents/${uid}/approve`, { method: 'POST', headers: { cookie: adminCookie }, body: '{}' });
+    const uk = (await r0.json() as any).key;
+
+    // 第一次提交（建注册行 + pr 行）
+    setGithubClient(makeGithubNoop().gh);
+    const files1 = { ...GOOD_FILES, 'applet.json': (GOOD_FILES['applet.json'] as string).replace('mcapp', 'up-app') };
+    const r1 = await callTool('submit_applet', { applet_id: 'up-app', name: 'UP', files: files1 }, uk);
+    expect(toolResult(r1.json).pr_number).toBe(1);
+    // 模拟历史：把 pr 行改成 merged（如占位/合并周期后）
+    await env.DB.prepare(`UPDATE t_prs SET state='merged' WHERE applet_id=(SELECT id FROM t_applets WHERE path='up-app')`).run();
+    // 第二次提交（同一 applet，无 open 行 → openPR → INSERT 撞主键 → 必须 upsert）
+    const files2 = { ...files1, 'index.html': GOOD_FILES['index.html'] };
+    const r2 = await callTool('submit_applet', { applet_id: 'up-app', name: 'UP', files: files2 }, uk);
+    if (!res2ok(r2)) console.error('r2 body:', JSON.stringify(toolResult(r2.json)).slice(0, 300));
+    expect(res2ok(r2)).toBe(true);
+    const row = await env.DB.prepare(`SELECT pr_number, state FROM t_prs WHERE applet_id=(SELECT id FROM t_applets WHERE path='up-app')`).first<any>();
+    expect(row.state).toBe('open');
+  });
+
+  function res2ok(r: { json: any }): boolean {
+    return toolResult(r.json).ok === true;
+  }
+
   it('revoked key is rejected immediately (Review Focus 3)', async () => {
     const r = await SELF.fetch(`https://x/api/admin/agents/${agentId}/revoke`, { method: 'POST', headers: { cookie: adminCookie }, body: '{}' });
     expect(r.status).toBe(200);
