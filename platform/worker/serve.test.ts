@@ -29,7 +29,9 @@ beforeAll(async () => {
   await env.DB.prepare(`INSERT INTO t_applets (id, name, path, status, entry) VALUES (1, '服务中', 'serving-app', 'enabled', 'index.html')`).run();
   await env.DB.prepare(`INSERT INTO t_applets (id, name, path, status, entry) VALUES (2, '测试中', 'locked-app', 'testing', 'index.html')`).run();
   await env.DB.prepare(`INSERT INTO t_applet_acls (applet_id, user_id, allowed) VALUES (1, ?, 1)`).bind(userId).run();
-  await env.ASSETS.put('prod/serving-app/index.html', '<html>serving</html>');
+  await env.ASSETS.put('prod/serving-app/index.html',
+    '<!DOCTYPE html><html><head><link rel="stylesheet" href="style.css"><script src="/app-runtime.js"></script></head><body><script src="main.js"></script>serving</body></html>');
+  await env.ASSETS.put('prod/serving-app/style.css', 'body { color: red; }');
   await env.ASSETS.put('prod/locked-app/index.html', '<html>locked</html>');
   await env.ASSETS.put('preview/locked-app/index.html', '<html>preview</html>');
   adminCookie = await login('boss9');
@@ -102,6 +104,20 @@ describe('applet static serving', () => {
     const headEnd = html.indexOf('</head>');
     const injectAt = html.indexOf('data-platform-theme');
     expect(headEnd === -1 ? true : injectAt < headEnd).toBe(true);
+  });
+
+  it('inlines relative CSS/JS and runtime into served applet HTML (self-contained for sandboxed iframe)', async () => {
+    // serving-app 的入口页带外链脚本；R2 里的对应文件之前已在其他用例写入
+    await env.ASSETS.put('prod/serving-app/main.js', 'console.log("inlined-test");');
+    const r = await SELF.fetch('https://x/app/serving-app/', { headers: { cookie: adminCookie } });
+    const html = await r.text();
+    // 运行时已内联（不再有 /app-runtime.js 外链）
+    expect(html).toContain('data-applet-runtime');
+    expect(html).not.toMatch(/<script\s+src=["']\/app-runtime\.js["']/);
+    // CSP 不再含主机源（沙箱 origin=null 匹配不了），只允许内联
+    const csp = r.headers.get('content-security-policy') ?? '';
+    expect(csp).toContain("script-src 'unsafe-inline'");
+    expect(csp).not.toContain('script-src https://');
   });
 
   it('serves app-runtime.js placeholder', async () => {

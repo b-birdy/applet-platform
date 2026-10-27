@@ -1,6 +1,7 @@
 // 小程序静态资源服务：/app/:id/*、/preview/:id/*、/app-runtime.js
 import { Hono } from 'hono';
 import { getAuth, type AuthInfo } from './auth';
+import { RUNTIME_JS as runtimeJs } from './runtime-text';
 
 const CONTENT_TYPES: Record<string, string> = {
   html: 'text/html; charset=utf-8',
@@ -50,6 +51,18 @@ async function appletAccess(c: any, slug: string): Promise<{ ok: true; auth: Aut
   return { ok: true, auth };
 }
 
+// 异步正则替换（内联多文件时逐个拉 R2）
+async function replaceAsync(input: string, re: RegExp, replacer: (...args: any[]) => Promise<string>): Promise<string> {
+  const jobs: Promise<string>[] = [];
+  input.replace(re, (...args) => {
+    jobs.push(replacer(...args));
+    return args[0] as string;
+  });
+  const results = await Promise.all(jobs);
+  let i = 0;
+  return input.replace(re, () => results[i++]);
+}
+
 async function serveFrom(c: any, prefix: string, slug: string, filePath: string, adminOnly: boolean): Promise<Response> {
   if (adminOnly) {
     const auth = await getAuth(c.req.raw, c.env.DB);
@@ -72,8 +85,10 @@ async function serveFrom(c: any, prefix: string, slug: string, filePath: string,
   // 必须用请求的显式 origin 才能放行小程序自己的脚本与 Data API 请求。
   if (/\.html?$/i.test(filePath)) {
     const origin = new URL(c.req.url).origin;
+    // 沙箱 iframe（origin=null）无法匹配任何主机源——外部 CSS/JS 会被整条拦下。
+    // 因此 HTML 伺服时把同目录的 CSS/JS 全部内联（自包含文档），CSP 只需允许内联。
     headers['content-security-policy'] =
-      `default-src 'none'; script-src ${origin}; style-src ${origin} 'unsafe-inline'; img-src ${origin} data:; font-src ${origin}; connect-src ${origin}; frame-ancestors ${origin}`;
+      `default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; font-src data:; connect-src ${origin}; frame-ancestors ${origin}`;
   }
   let body: ReadableStream | string = obj.body;
   // 主题变量注入：小程序的 style.css 消费平台 CSS 变量（--canvas 等），
@@ -95,6 +110,36 @@ async function serveFrom(c: any, prefix: string, slug: string, filePath: string,
     } else {
       html = inject + html;
     }
+    // 自包含化：沙箱 iframe 无法加载外部 CSS/JS（origin=null 匹配不了 CSP 主机源），
+    // 把相对路径的 <link rel=stylesheet> 与 <script src> 内联为对应内容。
+    const baseDir = `prod/${slug}/`;
+    const inlineAsset = async (path: string): Promise<string | null> => {
+      // 只处理同目录相对路径（./x、x、../x），拒绝绝对路径与跨目录逃逸
+      if (/^(https?:|\/|data:)/i.test(path)) return null;
+      const normalized = path.replace(/^\.\//, '');
+      const full = `${baseDir}${slug}/${normalized}`.replace('/../', '/').replace(/\/\//g, '/');
+      const asset = await c.env.ASSETS.get(full);
+      return asset ? await asset.text() : null;
+    };
+    // 内联样式表
+    html = await replaceAsync(html, /<link\s+[^>]*rel=["']stylesheet["'][^>]*href=["']([^"']+)["'][^>]*>/gi,
+      async (m: string, href: string) => {
+        const css = await inlineAsset(href);
+        return css === null ? m : `<style data-inlined-from="${href}">\n${css}\n</style>`;
+      });
+    // 内联脚本（保留 /app-runtime.js 外链——它由平台独立伺服，同源且 CSP 例外已不需要：
+    // 运行时也内联，见下）
+    html = await replaceAsync(html, /<script\s+([^>]*)src=["']([^"']+)["']([^>]*)><\/script>/gi,
+      async (m: string, pre: string, src: string, post: string) => {
+        if (/^(https?:|\/)/i.test(src)) return m; // 绝对路径/平台路径不动
+        const js = await inlineAsset(src);
+        if (js === null) return m;
+        const attrs = (pre + ' ' + post).replace(/\bsrc\b/g, '').trim();
+        return `<script ${attrs}>\n${js}\n</script>`;
+      });
+    // 运行时脚本也内联（消除最后一个外部请求）
+    html = html.replace(/<script\s+src=["']\/app-runtime\.js["']\s*><\/script>/gi,
+      `<script data-applet-runtime>\n${runtimeJs}\n</script>`);
     headers['content-length'] = String(new TextEncoder().encode(html).byteLength);
     body = html;
   }
@@ -123,8 +168,8 @@ serveRoutes.get('/preview/:slug{.*}', async (c) => {
   return serveFrom(c, 'preview', split.slug, split.file, true);
 });
 
-// 内置运行时（真身：平台注入凭据 + window.applet 数据接口）
-import { RUNTIME_JS as runtimeJs } from './runtime-text';
+// 内置运行时也通过 /app-runtime.js 伺服（内容来自 runtime-text.ts）——
+// 内联进自包含 HTML 后此路由保留给直接访问场景
 serveRoutes.get('/app-runtime.js', () =>
   new Response(runtimeJs, {
     headers: { 'content-type': 'application/javascript; charset=utf-8', 'cache-control': 'no-store' },
