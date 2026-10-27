@@ -258,14 +258,26 @@ async function getStatus(env: McpEnv, agent: { id: number }, args: any): Promise
 
   const pr = await env.DB.prepare(`SELECT pr_number, state FROM t_prs WHERE applet_id = ? ORDER BY pr_number DESC LIMIT 1`).bind(applet.id).first<{ pr_number: number; state: string }>();
   const report = await env.DB.prepare(`SELECT value FROM t_settings WHERE key = ?`).bind(`check_report.${appletId}`).first<{ value: string }>();
+  // 归属 agent 的名字（agent 看得到自己是谁）
+  const self = await env.DB.prepare(`SELECT name FROM t_agents WHERE id = ?`).bind(agent.id).first<{ name: string }>();
+  // 可操作范围提示（帮助 agent 理解 AGENT_SCOPE）
+  const ownedCount = (await env.DB.prepare(`SELECT COUNT(*) AS n FROM t_agent_applets WHERE agent_id = ?`).bind(agent.id).first<{ n: number }>())?.n ?? 0;
   return {
     status: 200,
     body: wrapTool({
       ok: true,
       applet_id: appletId,
+      your_agent: { id: agent.id, name: self?.name ?? String(agent.id) },
       platform_status: applet.status,
+      status_meaning: applet.status === 'testing' ? '已注册未上线：管理员审阅合并 PR 后手动启用'
+        : applet.status === 'enabled' ? '已上线，被授权用户可使用'
+        : '已停用',
       pr: pr ? { number: pr.pr_number, state: pr.state } : null,
       check_report: report?.value ? JSON.parse(report.value) : null,
+      next_steps: pr?.state === 'open'
+        ? '等待管理员在平台内审阅合并；如有 error 级 issues，修正后重新 submit_applet（同分支自动更新本 PR）'
+        : '等待管理员审阅；提交新版本会走同分支更新流程',
+      your_accessible_applets: ownedCount,
     }),
   };
 }

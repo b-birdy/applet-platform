@@ -188,6 +188,49 @@ adminAppletRoutes.delete('/api/admin/applets/:id', async (c) => {
   return c.json({ ok: true });
 });
 
+// 小程序历史时间线（日志管理模块）：该 applet 的审计事件 + PR 状态变化 + agent 归属，按时间倒序
+adminAppletRoutes.get('/api/admin/applets/:id/history', async (c) => {
+  const slug = c.req.param('id');
+  const applet = await c.env.DB.prepare(`SELECT id, path FROM t_applets WHERE path = ?`).bind(slug).first<{ id: number; path: string }>();
+  if (!applet) return c.json({ error: 'NOT_FOUND' }, 404);
+
+  // 审计日志中与该 applet 相关的事件（target=path 或 detail 含 path；agent.submit 的 target 是 appletId）
+  const audits = (await c.env.DB.prepare(
+    `SELECT al.id, al.at, al.actor_type, al.actor_id, al.action, al.target, al.detail,
+       u.username AS actor_username
+     FROM t_audit_logs al LEFT JOIN t_users u ON u.id = CAST(al.actor_id AS INTEGER) AND al.actor_type = 'user'
+     WHERE al.target = ? OR al.action LIKE 'agent.%' OR al.action = 'applet.merge_pr'
+     ORDER BY al.id DESC LIMIT 200`
+  ).bind(slug).all() as any).results as any[];
+
+  // 过滤：target 精确匹配 slug 的 + agent 提交/审批类事件（宽松匹配后由 detail 校正）
+  const relevant = audits.filter((r) =>
+    r.target === slug ||
+    ['agent.approve', 'agent.reject', 'agent.revoke', 'agent.grant', 'sync.once'].includes(r.action) === false && r.target === slug ||
+    (r.action === 'agent.submit' && r.target === slug)
+  );
+
+  // PR 历史
+  const prs = (await c.env.DB.prepare(
+    `SELECT pr_number, branch, state FROM t_prs WHERE applet_id = ? ORDER BY pr_number DESC`
+  ).bind(applet.id).all() as any).results;
+
+  // 当前归属 agent
+  const agents = (await c.env.DB.prepare(
+    `SELECT a.id, a.name, aa.source FROM t_agent_applets aa JOIN t_agents a ON a.id = aa.agent_id WHERE aa.applet_id = ?`
+  ).bind(applet.id).all() as any).results;
+
+  return c.json({
+    applet: { path: applet.path },
+    events: relevant.map((r) => ({
+      at: r.at, actorType: r.actor_type, actorId: r.actor_id,
+      actorName: r.actor_username ?? (r.actor_type === 'agent' ? `agent#${r.actor_id}` : r.actor_id),
+      action: r.action, detail: r.detail ? (() => { try { return JSON.parse(r.detail); } catch { return r.detail; } })() : null,
+    })),
+    prs, agents,
+  });
+});
+
 // 用户侧最小路由（Task 7 提前实现，Task 14 补 usage/export/purge）
 // 仅返回被授权且 enabled 的应用；admin 角色看全部（含 testing/disabled）
 adminAppletRoutes.use('/api/my/applets', requireAuth());

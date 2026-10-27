@@ -125,6 +125,48 @@ describe('authorization (D10)', () => {
   });
 });
 
+describe('applet history endpoint (log management module)', () => {
+  it('requires admin', async () => {
+    const r = await SELF.fetch('https://x/api/admin/applets/any/history');
+    expect([401, 403]).toContain(r.status);
+  });
+
+  it('returns events, prs, agents for an applet', async () => {
+    const login = await SELF.fetch('https://x/api/auth/login', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ username: 'boss7', password: 'pw-123456' }),
+    });
+    const cookie = login.headers.get('set-cookie')!.split(';')[0];
+    // beforeEach 会清 applet.% 审计——本用例自己产生一条事件
+    await SELF.fetch('https://x/api/admin/applets/demo7/status', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie },
+      body: JSON.stringify({ status: 'disabled' }),
+    });
+    const r = await SELF.fetch('https://x/api/admin/applets/demo7/history', { headers: { cookie } });
+    expect(r.status).toBe(200);
+    const json: any = await r.json();
+    expect(json.applet.path).toBe('demo7');
+    expect(Array.isArray(json.events)).toBe(true);
+    expect(Array.isArray(json.prs)).toBe(true);
+    expect(Array.isArray(json.agents)).toBe(true);
+    // 至少有授权/状态变更类审计事件
+    expect(json.events.length).toBeGreaterThan(0);
+  });
+
+  it('404 for unknown applet', async () => {
+    const login = await SELF.fetch('https://x/api/auth/login', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ username: 'boss7', password: 'pw-123456' }),
+    });
+    const cookie = login.headers.get('set-cookie')!.split(';')[0];
+    const r = await SELF.fetch('https://x/api/admin/applets/no-such/history', { headers: { cookie } });
+    expect(r.status).toBe(404);
+  });
+});
+
 describe('admin settings/logs/sync require auth (final deploy hotfix)', () => {
   it.each([
     '/api/admin/settings',

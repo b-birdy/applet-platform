@@ -18,6 +18,30 @@ const users = ref<User[]>([]);
 const wizardVisible = ref(false);
 const reportVisible = ref(false);
 const reportTarget = ref('');
+const historyVisible = ref(false);
+const historyTarget = ref('');
+const historyData = ref<{ events: any[]; prs: any[]; agents: any[] }>({ events: [], prs: [], agents: [] });
+
+const actionLabel: Record<string, string> = {
+  'applet.create': '创建', 'applet.status': '状态变更', 'applet.authorize': '授权变更',
+  'applet.update': '编辑', 'applet.delete': '删除', 'applet.merge_pr': '合并 PR',
+  'agent.submit': 'Agent 提交', 'applet.import': '导入',
+};
+
+async function openHistory(a: Applet) {
+  historyTarget.value = a.path;
+  try {
+    historyData.value = await api<any>(`/api/admin/applets/${a.path}/history`);
+  } catch {
+    historyData.value = { events: [], prs: [], agents: [] };
+  }
+  historyVisible.value = true;
+}
+
+function fmtDetail(d: any): string {
+  if (d === null || d === undefined) return '';
+  try { return JSON.stringify(d); } catch { return String(d); }
+}
 const reportIssues = ref<{ level: string; rule: string; file: string; message: string }[]>([]);
 
 const statusLabel: Record<string, string> = { testing: '测试', enabled: '启用', disabled: '停用' };
@@ -228,6 +252,9 @@ function onWizardCreated() {
           <el-tooltip content="名称/图标/展示方式/本应用专属配额" placement="top">
             <el-button size="small" @click="openEdit(row)">编辑</el-button>
           </el-tooltip>
+          <el-tooltip content="该小程序的完整操作时间线：谁在何时做了什么" placement="top">
+            <el-button size="small" @click="openHistory(row)">历史</el-button>
+          </el-tooltip>
           <el-button v-if="row.open_prs" size="small" type="primary" @click="mergePR(row)">合并 PR</el-button>
           <el-button size="small" @click="checkReport(row)">检查报告</el-button>
           <el-button size="small" type="danger" plain @click="remove(row)">删除</el-button>
@@ -293,6 +320,35 @@ function onWizardCreated() {
       </template>
     </el-dialog>
 
+    <!-- 历史时间线抽屉（日志管理） -->
+    <el-drawer v-model="historyVisible" :title="`操作历史 — ${historyTarget}`" size="520px">
+      <h3 class="hist-h">归属 Agent</h3>
+      <el-empty v-if="historyData.agents.length === 0" description="无归属 agent" :image-size="50" />
+      <div v-else class="hist-agents">
+        <el-tag v-for="a in historyData.agents" :key="a.id" style="margin: 0 6px 6px 0">
+          {{ a.name }}（{{ a.source === 'submitted' ? '首次提交' : '管理员授权' }}）
+        </el-tag>
+      </div>
+
+      <h3 class="hist-h">PR 记录</h3>
+      <el-empty v-if="historyData.prs.length === 0" description="无 PR 记录" :image-size="50" />
+      <div v-else class="hist-prs">
+        <div v-for="p in historyData.prs" :key="p.pr_number" class="hist-pr">
+          PR #{{ p.pr_number }} — {{ p.branch }} <el-tag size="small" :type="p.state === 'open' ? 'warning' : p.state === 'merged' ? 'success' : 'info'">{{ p.state }}</el-tag>
+        </div>
+      </div>
+
+      <h3 class="hist-h">事件时间线（{{ historyData.events.length }}）</h3>
+      <el-empty v-if="historyData.events.length === 0" description="暂无事件" :image-size="50" />
+      <el-timeline v-else style="padding-left: 4px">
+        <el-timeline-item v-for="(e, i) in historyData.events" :key="i" :timestamp="e.at" placement="top">
+          <b>{{ actionLabel[e.action] ?? e.action }}</b>
+          <span class="hist-actor"> — {{ e.actorType === 'agent' ? `agent ${e.actorName}` : e.actorName ?? e.actorId }}</span>
+          <div v-if="e.detail" class="hist-detail">{{ fmtDetail(e.detail) }}</div>
+        </el-timeline-item>
+      </el-timeline>
+    </el-drawer>
+
     <!-- 检查报告抽屉 -->
     <el-drawer v-model="reportVisible" :title="`检查报告 — ${reportTarget}`" size="480px">
       <el-empty v-if="reportIssues.length === 0" description="无问题（全部通过）" />
@@ -319,6 +375,10 @@ h1 { font-size: 17px; margin: 0; }
 .row-disabled td { background: color-mix(in srgb, var(--off) 8%, transparent) !important; }
 .quota-grid { display: grid; grid-template-columns: 160px 1fr; gap: 6px 10px; align-items: center; }
 .hint { font-size: 12px; color: var(--ink-3); }
+.hist-h { font-size: 13px; margin: 14px 0 8px; }
+.hist-prs .hist-pr { padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+.hist-actor { color: var(--ink-3); font-size: 12px; }
+.hist-detail { font-size: 11px; color: var(--ink-3); font-family: ui-monospace, monospace; word-break: break-all; margin-top: 2px; }
 .hint { font-size: 13px; color: var(--ink-2); margin-top: 0; }
 .issues { list-style: none; padding: 0; margin: 0; }
 .issues li { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; margin-bottom: 8px; font-size: 13px; }
