@@ -24,6 +24,9 @@ async function ensureSchema(db: D1Database): Promise<void> {
   if (!cols.results.some((c) => c.name === 'display')) {
     await db.prepare(`ALTER TABLE t_applets ADD COLUMN display TEXT NOT NULL DEFAULT 'embed'`).run();
   }
+  if (!cols.results.some((c) => c.name === 'version')) {
+    await db.prepare(`ALTER TABLE t_applets ADD COLUMN version TEXT`).run();
+  }
 }
 
 setupRoutes.get('/api/setup', async (c) => {

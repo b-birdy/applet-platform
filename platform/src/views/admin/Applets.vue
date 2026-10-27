@@ -11,6 +11,7 @@ import { adoptPrompt } from '../../data/prompts';
 type Applet = {
   id: number; name: string; path: string; icon: string | null; status: string;
   authorized_users: number; tables: number; open_prs: number; open_pr_number: number | null; missing: number;
+  version: string | null;
 };
 type User = { id: number; username: string; role: string };
 
@@ -138,14 +139,14 @@ async function submitAgentGrant() {
   }
 }
 
-// 编辑对话框（改进 8）：名称/图标/展示方式/专属配额
+// 编辑对话框（改进 8）：名称/图标/展示方式/版本/专属配额
 const editVisible = ref(false);
 const editTarget = ref<Applet | null>(null);
-const editForm = ref({ name: '', icon: '', display: 'embed', quotaRows: undefined as number | undefined, quotaBytes: undefined as number | undefined });
+const editForm = ref({ name: '', icon: '', display: 'embed', version: '', quotaRows: undefined as number | undefined, quotaBytes: undefined as number | undefined });
 
 function openEdit(a: Applet) {
   editTarget.value = a;
-  editForm.value = { name: a.name, icon: a.icon ?? '', display: (a as any).display ?? 'embed', quotaRows: undefined, quotaBytes: undefined };
+  editForm.value = { name: a.name, icon: a.icon ?? '', display: (a as any).display ?? 'embed', version: (a as any).version ?? '', quotaRows: undefined, quotaBytes: undefined };
   editVisible.value = true;
 }
 
@@ -156,6 +157,7 @@ async function submitEdit() {
   if (f.name && f.name !== a.name) body.name = f.name;
   if (f.icon && f.icon !== (a.icon ?? '')) body.icon = f.icon;
   if (f.display) body.display = f.display;
+  if (f.version.trim() !== ((a as any).version ?? '')) body.version = f.version.trim();
   const quota: any = {};
   if (f.quotaRows !== undefined && !Number.isNaN(Number(f.quotaRows))) quota.rows = Number(f.quotaRows);
   if (f.quotaBytes !== undefined && !Number.isNaN(Number(f.quotaBytes))) quota.bytes = Number(f.quotaBytes);
@@ -319,6 +321,11 @@ function onWizardCreated() {
         </template>
       </el-table-column>
       <el-table-column prop="authorized_users" label="授权用户" width="90" align="center" />
+      <el-table-column label="版本" width="70" align="center">
+        <template #default="{ row }">
+          <span class="muted">{{ row.version || '—' }}</span>
+        </template>
+      </el-table-column>
       <el-table-column prop="tables" label="数据表" width="80" align="center" />
       <el-table-column label="展示方式" width="90" align="center">
         <template #default="{ row }">
@@ -417,6 +424,11 @@ function onWizardCreated() {
               <el-radio value="new_tab">新标签页</el-radio>
             </el-tooltip>
           </el-radio-group>
+        </el-form-item>
+        <el-form-item label="版本号">
+          <el-tooltip content="两级版本号（v主.次，如 v1.0 / v2.3）。agent 提交新版时会按清单自动更新，此处可手工修正" placement="top">
+            <el-input v-model="editForm.version" placeholder="v1.0" style="width: 140px" />
+          </el-tooltip>
         </el-form-item>
         <el-form-item label="专属配额">
           <div class="quota-grid">

@@ -8,6 +8,14 @@ const COL_NAME_RE = /^[a-z][a-z0-9_]*$/;
 export function appletTable(appletId: string, table: string): string {
   return `a_${appletId.replace(/[^a-zA-Z0-9]+/g, '_')}_${table}`;
 }
+
+// 版本号两级归一化：v1.0 / 1.0 / 1.0.0 / 2 → v1.0 / v1.0 / v1.0 / v2.0；非法返回 null
+export function normalizeVersion(v: string | null | undefined): string | null {
+  if (!v) return null;
+  const m = String(v).trim().replace(/^v/i, '').match(/^(\d+)(?:\.(\d+))?(?:\.\d+)?$/);
+  if (!m) return null;
+  return `v${Number(m[1])}.${m[2] !== undefined ? Number(m[2]) : 0}`;
+}
 const TYPE_MAP: Record<string, string> = { text: 'TEXT', integer: 'INTEGER', real: 'REAL', blob: 'BLOB' };
 
 export class SchemaChangeError extends Error {

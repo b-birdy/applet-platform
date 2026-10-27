@@ -3,7 +3,7 @@
 import { Hono } from 'hono';
 import { requireRole, requireAuth, type AuthInfo } from '../../auth';
 import { logAudit } from '../../audit';
-import { dropAppletTables } from '../../data';
+import { dropAppletTables, normalizeVersion } from '../../data';
 import { checkApplet } from '../../checker';
 import { createAppletRemover } from '../../remover';
 import { getGithubClientForEnv } from '../../github-bind';
@@ -36,7 +36,7 @@ adminAppletRoutes.use('/api/admin/applets', requireRole('admin'));
 
 adminAppletRoutes.get('/api/admin/applets', async (c) => {
   const rows = (await c.env.DB.prepare(
-    `SELECT a.id, a.name, a.path, a.icon, a.status, a.entry, a.display, a.created_at,
+    `SELECT a.id, a.name, a.path, a.icon, a.status, a.entry, a.display, a.created_at, a.version,
        (SELECT COUNT(*) FROM t_applet_acls acl WHERE acl.applet_id = a.id AND acl.allowed = 1) AS authorized_users,
        (SELECT COUNT(*) FROM t_prs pr WHERE pr.applet_id = a.id AND pr.state = 'open') AS open_prs,
        (SELECT pr_number FROM t_prs pr WHERE pr.applet_id = a.id AND pr.state = 'open' LIMIT 1) AS open_pr_number
@@ -56,14 +56,19 @@ adminAppletRoutes.put('/api/admin/applets/:id', async (c) => {
   const applet = await c.env.DB.prepare(`SELECT id, name, path FROM t_applets WHERE path = ?`).bind(slug).first<{ id: number; name: string; path: string }>();
   if (!applet) return c.json({ error: 'NOT_FOUND' }, 404);
 
-  const body = await c.req.json<{ name?: string; icon?: string; display?: string; quota?: { rows?: number; bytes?: number } }>().catch(() => null);
+  const body = await c.req.json<{ name?: string; icon?: string; display?: string; version?: string; quota?: { rows?: number; bytes?: number } }>().catch(() => null);
   if (!body) return c.json({ error: 'BAD_REQUEST' }, 400);
   if (body.display !== undefined && !['embed', 'new_tab'].includes(body.display)) return c.json({ error: 'BAD_DISPLAY' }, 400);
+  if (body.version !== undefined && body.version !== null && body.version !== '' && !normalizeVersion(body.version)) return c.json({ error: 'BAD_VERSION' }, 400);
 
   if (body.icon !== undefined && body.icon.length > 100_000) return c.json({ error: 'ICON_TOO_LARGE' }, 400);
   if (body.name !== undefined) await c.env.DB.prepare(`UPDATE t_applets SET name = ? WHERE id = ?`).bind(body.name, applet.id).run();
   if (body.icon !== undefined) await c.env.DB.prepare(`UPDATE t_applets SET icon = ? WHERE id = ?`).bind(body.icon, applet.id).run();
   if (body.display !== undefined) await c.env.DB.prepare(`UPDATE t_applets SET display = ? WHERE id = ?`).bind(body.display, applet.id).run();
+  if (body.version !== undefined) {
+    const ver = body.version === null || body.version === '' ? null : normalizeVersion(body.version);
+    await c.env.DB.prepare(`UPDATE t_applets SET version = ? WHERE id = ?`).bind(ver, applet.id).run();
+  }
 
   // D32: 专属配额覆盖写 t_settings
   if (body.quota) {

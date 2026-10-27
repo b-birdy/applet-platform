@@ -1,10 +1,38 @@
 // 新增小程序向导的三段提示词模板（D16）
 // 管理员复制给 agent；MCP 工具名与 spec/实现保持一致
-export type AppletMeta = { id: string; name: string; icon?: string };
+export type AppletMeta = {
+  id: string; name: string; icon?: string;
+  version?: string;        // 初始版本号（v0.1 形式，写入 applet.json）
+  target?: string;         // 适配终端
+  purpose?: string;        // 用途
+  features?: string[];     // 主要功能点
+  avoid?: string[];        // 需要避免的细节
+};
 
 const RULES = `· 只做这个小程序本身，不要改动仓库里其他文件；
 · 全程使用简体中文注释与界面文案；
 · 数据只能通过平台运行时 window.applet 存取，禁止任何绕过。`;
+
+// 管理员在向导第一步填写的需求说明 → 提示词的【功能需求】块
+function requirementBlock(a: AppletMeta): string {
+  const lines: string[] = [];
+  if (a.version) lines.push(`· 初始版本号：${a.version}（写入 applet.json 的 version 字段，格式 v<主>.<次>）`);
+  if (a.target) lines.push(`· 适配终端：${a.target}`);
+  if (a.purpose) lines.push(`· 用途：${a.purpose}`);
+  if (a.features?.length) {
+    lines.push('· 主要功能点（逐一实现）：');
+    a.features.forEach((f, i) => lines.push(`  ${i + 1}. ${f}`));
+  }
+  if (a.avoid?.length) {
+    lines.push('· 需要避免的细节（硬性约束）：');
+    a.avoid.forEach((f) => lines.push(`  - ${f}`));
+  }
+  if (!lines.length) return '';
+  return `
+【功能需求】
+${lines.join('\n')}
+`;
+}
 
 export function devPrompt(a: AppletMeta, mcpUrl: string, accessCode?: string): string {
   const codeLine = accessCode
@@ -13,7 +41,7 @@ export function devPrompt(a: AppletMeta, mcpUrl: string, accessCode?: string): s
   return `请为本平台开发一个小程序，然后交付可上传的文件集。
 
 【目标】开发小程序「${a.name}」（id: ${a.id}${a.icon ? `，图标建议 ${a.icon}` : ''}）。
-
+${requirementBlock(a)}
 【第一步 · 获取规范】
 连接平台 MCP 服务（Streamable HTTP）：${mcpUrl}
 ${codeLine}。连接后先调用工具 get_spec（不传参数获取全部章节），逐条阅读 structure / manifest / data / security / upload 五节规范。
@@ -55,7 +83,7 @@ export function existingAppletPrompt(a: AppletMeta, mcpUrl: string, accessCode?:
   return `我有一个已经开发完成的小程序，请把它接入本平台并上传。
 
 【目标】把现成的小程序接入平台，id 定为「${a.id}」（显示名「${a.name}」）。
-
+${requirementBlock(a)}
 【准备】
 连接平台 MCP 服务：${mcpUrl}
 · 准入码：${codeLine}。首次使用先用准入码调用 agent_apply 申请接入，等管理员审批拿到 API Key 后继续；

@@ -1,7 +1,7 @@
 // 同步器：main 的 applets/ 树 ↔ t_applets 注册表；PR 分支 → R2 preview
 import type { GitHubClient } from './github';
 import { checkApplet } from './checker';
-import { registerAppletTables, type ManifestTable } from './data';
+import { registerAppletTables, normalizeVersion, type ManifestTable } from './data';
 
 export type SyncEnv = {
   DB: D1Database;
@@ -54,6 +54,9 @@ export async function refreshApplet(env: SyncEnv, slug: string): Promise<void> {
       if (Array.isArray(manifest.tables)) {
         await registerAppletTables(env.DB, slug, manifest.tables as ManifestTable[]);
       }
+      const ver = normalizeVersion(manifest.version);
+      // 仅回填空值：管理员手改的版本不被同步覆盖；agent 提交时由 mcp 侧更新
+      if (ver) await env.DB.prepare(`UPDATE t_applets SET version = ? WHERE path = ? AND version IS NULL`).bind(ver, slug).run();
     } catch (e) {
       if (e instanceof Error && e.name === 'SchemaChangeError') {
         await env.DB.prepare(`INSERT INTO t_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`)
@@ -92,15 +95,17 @@ export async function syncOnce(env: SyncEnv): Promise<{ added: string[]; missing
     let name = slug;
     let entry: string | null = null;
     let display = 'embed';
+    let version: string | null = null;
     if (manifestRaw) {
       try {
         const m = JSON.parse(new TextDecoder().decode(manifestRaw));
         name = m.name ?? slug;
         entry = m.entry ?? null;
         if (m.display === 'new_tab') display = 'new_tab';
+        version = normalizeVersion(m.version);
       } catch { /* 清单坏也先注册，报告会指出 */ }
     }
-    await env.DB.prepare(`INSERT INTO t_applets (name, path, status, entry, display) VALUES (?, ?, 'testing', ?, ?)`).bind(name, slug, entry, display).run();
+    await env.DB.prepare(`INSERT INTO t_applets (name, path, status, entry, display, version) VALUES (?, ?, 'testing', ?, ?, ?)`).bind(name, slug, entry, display, version).run();
     await refreshApplet(env, slug);
     added.push(slug);
   }

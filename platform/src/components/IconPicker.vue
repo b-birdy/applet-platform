@@ -89,52 +89,75 @@ function fitToIcon(img: HTMLImageElement): string {
 
 <template>
   <div class="icon-picker">
-    <div class="tabs">
-      <button type="button" class="tab" :class="{ on: tab === 'preset' }" @click="tab = 'preset'">预置图标</button>
-      <button type="button" class="tab" :class="{ on: tab === 'upload' }" @click="tab = 'upload'">上传图片</button>
-    </div>
+    <el-popover placement="bottom-start" :width="380" trigger="click">
+      <template #reference>
+        <button type="button" class="trigger" title="点击选择图标">
+          <img v-if="isImg" class="tr-img" :src="modelValue" alt="">
+          <span v-else-if="modelValue" class="tr-emoji">{{ modelValue }}</span>
+          <span v-else class="tr-empty">▣</span>
+          <span class="tr-label">{{ modelValue ? '更换图标' : '选择图标' }}</span>
+        </button>
+      </template>
 
-    <template v-if="tab === 'preset'">
-      <div v-for="g in PRESETS" :key="g.group" class="group">
-        <div class="group-name">{{ g.group }}</div>
-        <div class="grid">
-          <button
-            v-for="ic in g.icons"
-            :key="ic"
-            type="button"
-            class="cell"
-            :class="{ on: modelValue === ic }"
-            @click="pick(ic)"
-          >{{ ic }}</button>
+      <div class="panel">
+        <div class="tabs">
+          <button type="button" class="tab" :class="{ on: tab === 'preset' }" @click="tab = 'preset'">预置图标</button>
+          <button type="button" class="tab" :class="{ on: tab === 'upload' }" @click="tab = 'upload'">上传图片</button>
+        </div>
+
+        <template v-if="tab === 'preset'">
+          <div v-for="g in PRESETS" :key="g.group" class="group">
+            <div class="group-name">{{ g.group }}</div>
+            <div class="grid">
+              <button
+                v-for="ic in g.icons"
+                :key="ic"
+                type="button"
+                class="cell"
+                :class="{ on: modelValue === ic }"
+                @click="pick(ic)"
+              >{{ ic }}</button>
+            </div>
+          </div>
+        </template>
+
+        <template v-else>
+          <label class="drop" :class="{ busy }">
+            <input type="file" accept="image/*" hidden @change="onFile">
+            <template v-if="isImg || preview">
+              <img class="prev" :src="modelValue.startsWith('data:image') ? modelValue : preview" alt="图标预览">
+              <span class="drop-hint">点击更换图片</span>
+            </template>
+            <template v-else>
+              <span class="drop-icon">🖼️</span>
+              <span class="drop-hint">点击选择图片<br><small>自动居中裁剪并缩放至 128×128，无需手动处理尺寸</small></span>
+            </template>
+          </label>
+        </template>
+
+        <div v-if="modelValue" class="current">
+          当前：
+          <img v-if="isImg" class="cur-img" :src="modelValue" alt="">
+          <span v-else class="cur-emoji">{{ modelValue }}</span>
+          <button type="button" class="clear" @click="pick(''); preview = ''">清除</button>
         </div>
       </div>
-    </template>
-
-    <template v-else>
-      <label class="drop" :class="{ busy }">
-        <input type="file" accept="image/*" hidden @change="onFile">
-        <template v-if="isImg || preview">
-          <img class="prev" :src="modelValue.startsWith('data:image') ? modelValue : preview" alt="图标预览">
-          <span class="drop-hint">点击更换图片</span>
-        </template>
-        <template v-else>
-          <span class="drop-icon">🖼️</span>
-          <span class="drop-hint">点击选择图片<br><small>自动居中裁剪并缩放至 128×128，无需手动处理尺寸</small></span>
-        </template>
-      </label>
-    </template>
-
-    <div v-if="modelValue" class="current">
-      当前：
-      <img v-if="isImg" class="cur-img" :src="modelValue" alt="">
-      <span v-else class="cur-emoji">{{ modelValue }}</span>
-      <button type="button" class="clear" @click="pick(''); preview = ''">清除</button>
-    </div>
+    </el-popover>
   </div>
 </template>
 
 <style scoped>
-.icon-picker { width: 100%; max-height: 340px; overflow: auto; }
+.trigger {
+  display: inline-flex; align-items: center; gap: 8px;
+  border: 1px solid var(--line-strong); border-radius: 8px; padding: 6px 12px 6px 8px;
+  background: var(--panel); font: inherit; font-size: 13px; color: var(--ink-2); cursor: pointer;
+  transition: border-color .12s ease, color .12s ease;
+}
+.trigger:hover { border-color: var(--accent); color: var(--ink); }
+.tr-img { width: 28px; height: 28px; border-radius: 6px; object-fit: cover; }
+.tr-emoji { font-size: 22px; line-height: 1; }
+.tr-empty { font-size: 18px; color: var(--ink-3); }
+.panel { max-height: 340px; overflow: auto; }
 /* 手机窄屏：8 列改 6 列 */
 @media (max-width: 480px) {
   .icon-picker .grid { grid-template-columns: repeat(6, 1fr); }

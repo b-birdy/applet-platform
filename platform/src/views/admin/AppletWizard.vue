@@ -15,15 +15,36 @@ const step = ref(0);
 const mcpUrl = `${window.location.origin}/mcp`;
 const knownPaths = ref<Set<string>>(new Set());
 
-const form = ref({ id: '', name: '', icon: '' });
+const form = ref({
+  id: '', name: '', icon: '',
+  version: 'v0.1',
+  target: '电脑端',
+  purpose: '',
+  features: [''] as string[],
+  avoid: [] as string[],
+});
 
 const idRe = /^[a-z][a-z0-9-]*$/;
+const versionRe = /^v?\d+\.\d+$/;
 const idOk = computed(() => idRe.test(form.value.id));
 const nameOk = computed(() => form.value.name.trim().length > 0);
-const canNext = computed(() => (step.value === 0 ? idOk.value && nameOk.value : true));
+const versionOk = computed(() => versionRe.test(form.value.version.trim()));
+const purposeOk = computed(() => form.value.purpose.trim().length > 0);
+const featuresOk = computed(() => form.value.features.some((f) => f.trim().length > 0));
+const canNext = computed(() => (step.value === 0 ? idOk.value && nameOk.value && versionOk.value && purposeOk.value && featuresOk.value : true));
 
+// 需求说明整合进提示词（SDD）：版本号/终端/用途/功能点/避免项
+function reqMeta() {
+  return {
+    version: form.value.version.trim().replace(/^v/i, '') ? `v${form.value.version.trim().replace(/^v/i, '')}` : undefined,
+    target: form.value.target,
+    purpose: form.value.purpose.trim(),
+    features: form.value.features.map((f) => f.trim()).filter(Boolean),
+    avoid: form.value.avoid.map((f) => f.trim()).filter(Boolean),
+  };
+}
 const hasExisting = ref(false); // 已开发完成的成品 → 显示接入式提示词
-const dev = computed(() => (hasExisting.value ? existingAppletPrompt(form.value, mcpUrl, accessCode.value || undefined) : devPrompt(form.value, mcpUrl, accessCode.value || undefined)));
+const dev = computed(() => (hasExisting.value ? existingAppletPrompt({ id: form.value.id, name: form.value.name, icon: form.value.icon || undefined, ...reqMeta() }, mcpUrl, accessCode.value || undefined) : devPrompt({ id: form.value.id, name: form.value.name, icon: form.value.icon || undefined, ...reqMeta() }, mcpUrl, accessCode.value || undefined)));
 const check = computed(() => checkPrompt(form.value, mcpUrl));
 const upload = computed(() => uploadPrompt(form.value, mcpUrl));
 
@@ -84,23 +105,64 @@ function startPolling() {
       <el-step v-for="t in stepTitles" :key="t" :title="t" />
     </el-steps>
 
-    <!-- 第 1 步：基本信息 -->
+    <!-- 第 1 步：基本信息 + 需求说明（SDD） -->
     <section v-if="step === 0" class="body">
       <el-alert type="info" :closable="false" style="margin-bottom: 14px">
         <el-checkbox v-model="hasExisting">这个小程序已经开发完成（提示词将改为「接入已有代码」版本）</el-checkbox>
       </el-alert>
-      <el-form label-width="90px">
+
+      <div class="sec-title">基本身份</div>
+      <el-form label-width="90px" class="grid2">
         <el-form-item label="小程序 ID" :error="form.id && !idOk ? '小写字母开头，只能含小写字母、数字、连字符' : ''">
-          <el-input v-model="form.id" placeholder="word-cards" />
+          <el-tooltip content="小程序的唯一标识，即仓库中的目录名 applets/<ID>/，创建后不可更改" placement="top">
+            <el-input v-model="form.id" placeholder="word-cards" />
+          </el-tooltip>
         </el-form-item>
-        <el-form-item label="显示名">
+        <el-form-item label="名称">
           <el-input v-model="form.name" placeholder="背单词" />
+        </el-form-item>
+        <el-form-item label="初始版本">
+          <el-tooltip content="两级版本号：大版本.小版本。首次创建默认 v0.1；agent 每次提交可升级" placement="top">
+            <el-input v-model="form.version" placeholder="v0.1" style="width: 140px" :class="{ bad: form.version && !versionOk }" />
+          </el-tooltip>
         </el-form-item>
         <el-form-item label="图标">
           <IconPicker v-model="form.icon" />
         </el-form-item>
       </el-form>
-      <p class="hint">ID 即小程序在仓库中的目录名（applets/&lt;ID&gt;/），创建后不可更改。</p>
+
+      <div class="sec-title">功能需求<el-tooltip content="以下说明会自动整合进给 agent 的提示词中，作为开发的硬性要求" placement="top"><span class="q">?</span></el-tooltip></div>
+      <el-form label-width="90px">
+        <el-form-item label="适配终端">
+          <el-radio-group v-model="form.target">
+            <el-tooltip content="主要在桌面浏览器使用，按宽屏布局设计" placement="top"><el-radio value="电脑端">电脑端</el-radio></el-tooltip>
+            <el-tooltip content="主要在手机使用，按窄屏布局设计，注意触控友好" placement="top"><el-radio value="手机端">手机端</el-radio></el-tooltip>
+            <el-tooltip content="两种终端都要良好可用（响应式布局）" placement="top"><el-radio value="电脑端 + 手机端">两者兼顾</el-radio></el-tooltip>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item label="用途" :error="form.purpose && !purposeOk ? '' : undefined">
+          <el-input v-model="form.purpose" type="textarea" :rows="2" placeholder="这个小程序解决什么问题、给谁用（必填）" />
+        </el-form-item>
+        <el-form-item label="主要功能点" :error="form.features.length && !featuresOk ? '' : undefined">
+          <div class="lines">
+            <div v-for="(f, i) in form.features" :key="i" class="line">
+              <el-input v-model="form.features[i]" placeholder="一个功能点一行（至少一条，必填）" />
+              <el-button v-if="form.features.length > 1" text @click="form.features.splice(i, 1)">✕</el-button>
+            </div>
+            <el-button text type="primary" @click="form.features.push('')">＋ 增加功能点</el-button>
+          </div>
+        </el-form-item>
+        <el-form-item label="需要避免">
+          <div class="lines">
+            <div v-for="(f, i) in form.avoid" :key="i" class="line">
+              <el-input v-model="form.avoid[i]" placeholder="明确不要做的细节，如：不要自动播放声音" />
+              <el-button text @click="form.avoid.splice(i, 1)">✕</el-button>
+            </div>
+            <el-button text type="primary" @click="form.avoid.push('')">＋ 增加避免项（可选）</el-button>
+          </div>
+        </el-form-item>
+      </el-form>
+      <p class="hint">ID 即小程序在仓库中的目录名（applets/&lt;ID&gt;/），创建后不可更改。功能需求会整合进下一步的提示词。</p>
     </section>
 
     <!-- ②开发 ③自检 ⑤上传：提示词卡片 -->
@@ -148,6 +210,18 @@ function startPolling() {
 .steps { margin-bottom: 8px; }
 .body { min-height: 240px; }
 .body h3 { font-size: 14px; margin: 0 0 10px; }
+.sec-title { font-size: 13px; font-weight: 600; color: var(--ink); margin: 14px 0 10px; padding-left: 8px; border-left: 3px solid var(--accent); display: flex; align-items: center; gap: 6px; }
+.sec-title .q {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 15px; height: 15px; border-radius: 50%; font-size: 11px; font-weight: 400;
+  background: var(--accent-weak); color: var(--accent); cursor: help;
+}
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; column-gap: 18px; }
+@media (max-width: 560px) { .grid2 { grid-template-columns: 1fr; } }
+.lines { width: 100%; }
+.line { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.line .el-input { flex: 1; }
+.bad :deep(.el-input__wrapper) { box-shadow: 0 0 0 1px var(--danger) inset; }
 .prompt-card { background: var(--canvas); border: 1px solid var(--line); border-radius: 8px; padding: 12px; max-height: 300px; overflow: auto; }
 .prompt-card pre { margin: 0; white-space: pre-wrap; font-size: 12.5px; line-height: 1.7; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .row { display: flex; align-items: center; gap: 12px; margin-top: 12px; }

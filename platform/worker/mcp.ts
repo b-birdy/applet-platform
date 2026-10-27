@@ -2,7 +2,7 @@
 import { SPEC_MD as specMd } from './spec-text';
 import { checkAppletWithSizes } from './checker';
 import { getGithubClientForEnv } from './github-bind';
-import { registerAppletTables, SchemaChangeError, ReservedColumnError, appletTable, type ManifestTable } from './data';
+import { registerAppletTables, SchemaChangeError, ReservedColumnError, appletTable, normalizeVersion, type ManifestTable } from './data';
 import { getQuota } from './settings';
 
 const enc = new TextEncoder();
@@ -163,10 +163,12 @@ async function submitApplet(env: McpEnv, agent: { id: number; name: string }, ar
   const files = args?.files ?? {};
   let entry: string | null = null;
   let display = 'embed';
+  let version: string | null = null;
   try {
     const m = JSON.parse(files['applet.json']);
     entry = m.entry ?? null;
     if (m.display === 'new_tab') display = 'new_tab';
+    version = normalizeVersion(m.version);
   } catch { /* checker 已验过清单 */ }
 
   const fileMap = new Map<string, string | { contentBase64: string }>();
@@ -178,7 +180,7 @@ async function submitApplet(env: McpEnv, agent: { id: number; name: string }, ar
   let createdHere = false;
   let appletRowId = existing?.id;
   if (!appletRowId) {
-    const ins = await env.DB.prepare(`INSERT INTO t_applets (name, path, status, entry, display) VALUES (?, ?, 'testing', ?, ?)`).bind(displayName, appletId, entry, display).run();
+    const ins = await env.DB.prepare(`INSERT INTO t_applets (name, path, status, entry, display, version) VALUES (?, ?, 'testing', ?, ?, ?)`).bind(displayName, appletId, entry, display, version).run();
     appletRowId = ins.meta.last_row_id as number;
     createdHere = true;
   }
@@ -189,7 +191,7 @@ async function submitApplet(env: McpEnv, agent: { id: number; name: string }, ar
     if (Array.isArray(manifest.tables)) {
       await registerAppletTables(env.DB, appletId, manifest.tables as ManifestTable[]);
     }
-    await env.DB.prepare(`UPDATE t_applets SET entry = ?, display = ? WHERE path = ?`).bind(entry, display, appletId).run();
+    await env.DB.prepare(`UPDATE t_applets SET entry = ?, display = ?, version = COALESCE(?, version) WHERE path = ?`).bind(entry, display, version, appletId).run();
   } catch (e) {
     if (e instanceof SchemaChangeError || e instanceof ReservedColumnError) {
       const rule = e instanceof ReservedColumnError ? 'manifest.table' : 'manifest.evolution';
