@@ -88,7 +88,7 @@ async function serveFrom(c: any, prefix: string, slug: string, filePath: string,
     // 沙箱 iframe（origin=null）无法匹配任何主机源——外部 CSS/JS 会被整条拦下。
     // 因此 HTML 伺服时把同目录的 CSS/JS 全部内联（自包含文档），CSP 只需允许内联。
     headers['content-security-policy'] =
-      `default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; font-src data:; connect-src ${origin}; frame-ancestors ${origin}`;
+      `default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: ${origin}; font-src data:; connect-src ${origin}; frame-ancestors ${origin}`;
   }
   let body: ReadableStream | string = obj.body;
   // 主题变量注入：小程序的 style.css 消费平台 CSS 变量（--canvas 等），
