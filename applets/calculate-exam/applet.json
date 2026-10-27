@@ -1,0 +1,22 @@
+{
+  "id": "calculate-exam",
+  "name": "心算训练",
+  "icon": "🧮",
+  "entry": "index.html",
+  "version": "v0.1",
+  "display": "new_tab",
+  "tables": [
+    {
+      "name": "records",
+      "columns": [
+        { "name": "player", "type": "text", "required": true },
+        { "name": "level", "type": "integer", "required": true, "default": 1 },
+        { "name": "score", "type": "integer", "required": true, "default": 0 },
+        { "name": "time_ms", "type": "integer", "required": true, "default": 0 },
+        { "name": "accuracy", "type": "integer", "required": true, "default": 0 },
+        { "name": "correct_count", "type": "integer", "required": true, "default": 0 },
+        { "name": "answered_at", "type": "text" }
+      ]
+    }
+  ]
+}
