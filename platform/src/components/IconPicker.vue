@@ -134,7 +134,11 @@ function fitToIcon(img: HTMLImageElement): string {
 </template>
 
 <style scoped>
-.icon-picker { max-height: 320px; overflow: auto; }
+.icon-picker { width: 100%; max-height: 340px; overflow: auto; }
+/* 手机窄屏：8 列改 6 列 */
+@media (max-width: 480px) {
+  .icon-picker .grid { grid-template-columns: repeat(6, 1fr); }
+}
 .tabs { display: flex; gap: 4px; margin-bottom: 10px; }
 .tab {
   border: none; background: none; font: inherit; font-size: 13px; padding: 6px 12px;

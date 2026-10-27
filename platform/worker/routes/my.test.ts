@@ -161,3 +161,36 @@ describe('sandbox assertions (static)', () => {
     expect(src).not.toContain('document.cookie');
   });
 });
+
+describe('profile theme persistence (6 themes)', () => {
+  let c: string;
+  beforeAll(async () => {
+    const hash = await hashPassword('pw-123456');
+    await env.DB.prepare(`INSERT INTO t_users (username, password_hash) VALUES ('theme-user', ?)`).bind(hash).run();
+    c = await login('theme-user');
+  });
+
+  it('accepts all six theme ids', async () => {
+    for (const t of ['light', 'dark', 'minimal', 'neon', 'glass', 'classic']) {
+      const r = await SELF.fetch('https://x/api/profile', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json', cookie: c },
+        body: JSON.stringify({ theme: t }),
+      });
+      expect(r.status).toBe(200);
+      const saved = await env.DB.prepare(`SELECT value FROM t_settings WHERE key = ?`).bind(`theme.user`).first();
+      // key 是 theme.<id>——每个用户独立，查一次即可
+    }
+    const saved = await env.DB.prepare(`SELECT value FROM t_settings WHERE key = 'theme.' || (SELECT id FROM t_users WHERE username='theme-user')`).first<any>();
+    expect(saved?.value).toBe('classic');
+  });
+
+  it('rejects unknown theme ids with 400', async () => {
+    const r = await SELF.fetch('https://x/api/profile', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json', cookie: c },
+      body: JSON.stringify({ theme: 'hacker' }),
+    });
+    expect(r.status).toBe(400);
+  });
+});

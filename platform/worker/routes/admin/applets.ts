@@ -350,11 +350,11 @@ adminAppletRoutes.get('/api/my/applets', async (c) => {
   let rows: any[];
   if (isAdmin) {
     rows = (await c.env.DB.prepare(
-      `SELECT id, name, path, icon, status, entry FROM t_applets ORDER BY id`
+      `SELECT id, name, path, icon, status, entry, display FROM t_applets ORDER BY id`
     ).all() as any).results as any[];
   } else {
     rows = (await c.env.DB.prepare(
-      `SELECT a.id, a.name, a.path, a.icon, a.status, a.entry
+      `SELECT a.id, a.name, a.path, a.icon, a.status, a.entry, a.display
        FROM t_applets a JOIN t_applet_acls acl ON acl.applet_id = a.id AND acl.user_id = ? AND acl.allowed = 1
        WHERE a.status = 'enabled' ORDER BY a.id`
     ).bind(auth.userId).all() as any).results as any[];

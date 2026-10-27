@@ -4,7 +4,7 @@ import { ref, onMounted } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { api, ApiError } from '../api/client';
 import { useAuthStore } from '../stores/auth';
-import { useThemeStore } from '../stores/theme';
+import { useThemeStore, THEMES, type ThemeId } from '../stores/theme';
 
 const auth = useAuthStore();
 const theme = useThemeStore();
@@ -47,7 +47,7 @@ async function changePassword() {
   }
 }
 
-async function toggleTheme(mode: 'light' | 'dark') {
+async function toggleTheme(mode: ThemeId) {
   theme.setMode(mode);
   try {
     await api('/api/profile', { method: 'PUT', body: { theme: mode } });
@@ -91,11 +91,21 @@ async function toggleTheme(mode: 'light' | 'dark') {
     </section>
 
     <section class="card">
-      <h2>外观</h2>
-      <el-radio-group :model-value="theme.mode" @update:model-value="toggleTheme($event as any)">
-        <el-radio-button value="light">浅色</el-radio-button>
-        <el-radio-button value="dark">深色</el-radio-button>
-      </el-radio-group>
+      <h2>主题</h2>
+      <div class="theme-grid">
+        <button
+          v-for="t in THEMES"
+          :key="t.id"
+          type="button"
+          class="theme-card"
+          :class="{ on: theme.mode === t.id }"
+          @click="toggleTheme(t.id)"
+        >
+          <span class="swatch" :style="{ background: t.swatch }"></span>
+          <span class="t-name">{{ t.name }}</span>
+          <span class="t-check" v-if="theme.mode === t.id">✓</span>
+        </button>
+      </div>
     </section>
 
     <section class="card">
@@ -119,4 +129,18 @@ h2 { font-size: 14px; margin: 0 0 12px; }
 .history { list-style: none; margin: 0; padding: 0; }
 .history li { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
 .history .at { color: var(--ink-3); }
+.theme-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 10px; }
+.theme-card {
+  position: relative; display: flex; flex-direction: column; align-items: center; gap: 6px;
+  border: 2px solid var(--line); border-radius: 10px; background: var(--panel);
+  padding: 12px 6px 10px; cursor: pointer; font: inherit; color: inherit;
+}
+.theme-card:hover { border-color: var(--accent); }
+.theme-card.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.swatch { width: 100%; height: 40px; border-radius: 6px; border: 1px solid rgba(0,0,0,.08); }
+.t-name { font-size: 12px; }
+.t-check {
+  position: absolute; top: 6px; right: 8px; width: 18px; height: 18px; border-radius: 50%;
+  background: var(--accent); color: #fff; font-size: 11px; display: flex; align-items: center; justify-content: center;
+}
 </style>

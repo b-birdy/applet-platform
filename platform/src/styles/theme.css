@@ -51,3 +51,40 @@ body {
   background-size: 56px 56px;
   opacity: .35;
 }
+
+/* ── 主题特效层（随 data-theme 激活） ── */
+
+/* 玻璃拟态：面板半透明 + 背景模糊 */
+html[data-theme='glass'] .el-card,
+html[data-theme='glass'] .card,
+html[data-theme='glass'] .side {
+  backdrop-filter: var(--backdrop-blur);
+  -webkit-backdrop-filter: var(--backdrop-blur);
+  border-color: rgba(255, 255, 255, .08);
+}
+html[data-theme='glass'] body {
+  /* 深底上的柔光光斑，让玻璃面板的模糊有内容可透 */
+  background:
+    radial-gradient(600px 400px at 85% 10%, rgba(79, 168, 232, .14), transparent 60%),
+    radial-gradient(500px 380px at 10% 90%, rgba(126, 232, 199, .1), transparent 60%),
+    var(--canvas);
+}
+
+/* 霓虹渐变：强调色发光 */
+html[data-theme='neon'] .tile:hover .ic,
+html[data-theme='neon'] .nav.on {
+  box-shadow: 0 0 18px -2px color-mix(in srgb, var(--accent) 55%, transparent);
+}
+html[data-theme='neon'] .btn, html[data-theme='neon'] .el-button--primary {
+  box-shadow: 0 0 14px -2px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+/* 复古高雅：衬线标题 */
+html[data-theme='classic'] h1, html[data-theme='classic'] h2, html[data-theme='classic'] .wordmark b {
+  font-family: Georgia, "Songti SC", "SimSun", serif;
+}
+
+/* 全站动效：尊重 reduced-motion */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; }
+}

@@ -10,7 +10,12 @@ const theme = useThemeStore();
 const route = useRoute();
 const router = useRouter();
 
-const collapsed = ref(false);
+const collapsed = ref(window.innerWidth < 768); // 手机窄屏默认折叠
+const isMobile = ref(window.innerWidth < 768);
+window.addEventListener('resize', () => {
+  isMobile.value = window.innerWidth < 768;
+  if (isMobile.value) collapsed.value = true;
+});
 
 const userItems = [
   { path: '/', label: '首页', icon: '⌂' },
@@ -38,6 +43,7 @@ async function logout() {
 <template>
   <div class="shell">
     <aside class="side" :class="{ collapsed }">
+      <button class="fold" @click="collapsed = !collapsed" :aria-label="collapsed ? '展开菜单' : '折叠菜单'">{{ collapsed ? '»' : '«' }}</button>
       <div class="wordmark" @click="router.push('/')" role="button" tabindex="0">
         <div class="glyph"></div>
         <b v-show="!collapsed">Applet</b>
@@ -46,7 +52,8 @@ async function logout() {
       <nav>
         <div class="sec" v-show="!collapsed">通用</div>
         <router-link v-for="item in userItems" :key="item.path" :to="item.path" class="nav"
-          :class="{ on: item.path === '/' ? route.path === '/' : route.path.startsWith(item.path) }">
+          :class="{ on: item.path === '/' ? route.path === '/' : route.path.startsWith(item.path) }"
+          @click="isMobile && (collapsed = true)">
           <span class="ico">{{ item.icon }}</span>
           <span v-show="!collapsed">{{ item.label }}</span>
         </router-link>
@@ -71,7 +78,6 @@ async function logout() {
         </button>
       </div>
     </aside>
-    <button class="fold" @click="collapsed = !collapsed" :aria-label="collapsed ? '展开菜单' : '折叠菜单'">{{ collapsed ? '»' : '«' }}</button>
     <main class="main">
       <router-view />
     </main>
@@ -81,11 +87,17 @@ async function logout() {
 <style scoped>
 .shell { display: flex; height: 100%; }
 .side {
+  position: relative;
   width: 200px; flex: none; display: flex; flex-direction: column;
   background: var(--panel); border-right: 1px solid var(--line); padding: 14px 10px;
   transition: width .18s cubic-bezier(.4, 0, .2, 1);
 }
 .side.collapsed { width: 48px; padding: 14px 6px; }
+@media (max-width: 767px) {
+  .side { position: fixed; z-index: 90; height: 100dvh; box-shadow: var(--shadow-lg); }
+  .side.collapsed { transform: translateX(-100%); box-shadow: none; }
+  .main { padding: 12px !important; }
+}
 .wordmark { padding: 4px 8px 16px; cursor: pointer; border-bottom: 1px solid var(--line); margin-bottom: 8px; }
 .wordmark .glyph { background: var(--accent-grad); box-shadow: 0 2px 6px -2px color-mix(in srgb, var(--accent) 50%, transparent); }
 nav { flex: 1; display: flex; flex-direction: column; gap: 2px; }
@@ -103,11 +115,11 @@ nav { flex: 1; display: flex; flex-direction: column; gap: 2px; }
 .foot { border-top: 1px solid var(--line); padding-top: 8px; display: flex; flex-direction: column; gap: 2px; }
 .as-btn { width: 100%; }
 .fold {
-  position: fixed; left: var(--fold-x, 200px); top: 50%; transform: translateY(-50%);
+  position: absolute; right: -1px; top: 50%; transform: translateY(-50%);
   width: 18px; height: 44px; border: 1px solid var(--line); border-left: none;
   background: var(--panel); color: var(--ink-3); cursor: pointer; z-index: 10;
   border-radius: 0 8px 8px 0; box-shadow: var(--shadow-sm);
-  transition: left .18s cubic-bezier(.4, 0, .2, 1), color .12s ease;
+  transition: color .12s ease;
 }
 .fold:hover { color: var(--accent); }
 .main { flex: 1; min-width: 0; overflow: auto; padding: 18px 22px; }

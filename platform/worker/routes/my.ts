@@ -125,7 +125,8 @@ myRoutes.put('/api/profile', async (c) => {
     await c.env.DB.prepare(`UPDATE t_users SET nickname = ? WHERE id = ?`).bind(body.nickname, auth.userId).run();
   }
   if (body.theme !== undefined) {
-    if (body.theme !== 'light' && body.theme !== 'dark') return c.json({ error: 'BAD_REQUEST' }, 400);
+    const VALID_THEMES = ['light', 'dark', 'minimal', 'neon', 'glass', 'classic'];
+    if (body.theme !== undefined && !VALID_THEMES.includes(body.theme)) return c.json({ error: 'BAD_REQUEST' }, 400);
     await c.env.DB.prepare(`INSERT INTO t_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`)
       .bind(`theme.${auth.userId}`, body.theme).run();
   }

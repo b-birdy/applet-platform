@@ -1,5 +1,8 @@
-/* D20/D33 设计语言「苍青工板」全部色值与字体：浅色 :root，深色 html.dark 覆盖 */
-:root {
+/* 工板 2.0 主题系统：html[data-theme] 驱动，6 风格主题
+   深色系主题同时挂 html.dark 供 Element Plus 暗色组件使用 */
+
+/* ── 清新文艺（默认，原浅色） ── */
+:root, html[data-theme='light'] {
   --canvas: #F6F7F5;
   --panel: #FFFFFF;
   --ink: #1C2422;
@@ -14,7 +17,6 @@
   --off: #9AA5A2;
   --danger: #C24E4E;
   --font: "IBM Plex Sans", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
-  /* 体系 token：圆角 / 阴影 / 强调弱色阶 */
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 16px;
@@ -23,14 +25,14 @@
   --shadow-lg: 0 4px 8px rgba(28, 36, 34, .06), 0 16px 40px -12px rgba(28, 36, 34, .16);
   --accent-hover: #12605A;
   --accent-soft: #F0F7F6;
-  /* 工板 2.0：渐变（仅用于可交互元素）+ agent 语义色（琥珀=机器操作） */
   --accent-grad: linear-gradient(135deg, #176E68, #1F8F84);
   --agent: #B9791F;
   --agent-weak: #F7EEDD;
   --surface-2: #FBFCFB;
 }
 
-html.dark {
+/* ── 暗黑模式 ── */
+html[data-theme='dark'] {
   --canvas: #0F1513;
   --panel: #1A211F;
   --ink: #E6EBE9;
@@ -53,4 +55,114 @@ html.dark {
   --warn: #D29A45;
   --off: #5F6B68;
   --danger: #E07070;
+}
+
+/* ── 极简主义：纯灰阶 + 单一黑强调，无彩色 ── */
+html[data-theme='minimal'] {
+  --canvas: #FAFAFA;
+  --panel: #FFFFFF;
+  --ink: #111111;
+  --ink-2: #555555;
+  --ink-3: #999999;
+  --line: #E8E8E8;
+  --line-strong: #D4D4D4;
+  --accent: #111111;
+  --accent-weak: #F0F0F0;
+  --accent-hover: #000000;
+  --accent-soft: #F5F5F5;
+  --accent-grad: linear-gradient(135deg, #2B2B2B, #111111);
+  --agent: #8A6D3B;
+  --agent-weak: #F3EEE4;
+  --surface-2: #F4F4F4;
+  --ok: #3D7A4E;
+  --warn: #9A7B2E;
+  --off: #AAAAAA;
+  --danger: #B03A3A;
+  --shadow-sm: 0 0 0 1px rgba(0, 0, 0, .04);
+  --shadow-md: 0 1px 2px rgba(0, 0, 0, .06), 0 4px 16px -6px rgba(0, 0, 0, .1);
+  --shadow-lg: 0 2px 4px rgba(0, 0, 0, .08), 0 12px 32px -10px rgba(0, 0, 0, .16);
+}
+
+/* ── 霓虹渐变：深紫夜空 + 电光青/品红渐变强调 ── */
+html[data-theme='neon'] {
+  --canvas: #0D0B1E;
+  --panel: #171331;
+  --ink: #EDEBFF;
+  --ink-2: #A79FD8;
+  --ink-3: #6E68A0;
+  --line: #2C2650;
+  --line-strong: #3D3570;
+  --accent: #7C5CFF;
+  --accent-weak: #251D52;
+  --accent-hover: #9B7FFF;
+  --accent-soft: #1D1740;
+  --accent-grad: linear-gradient(135deg, #7C5CFF, #E15CAA);
+  --agent: #FFB84D;
+  --agent-weak: #33270D;
+  --surface-2: #1D1840;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, .3), 0 0 12px rgba(124, 92, 255, .08);
+  --shadow-md: 0 2px 4px rgba(0, 0, 0, .35), 0 8px 28px -8px rgba(124, 92, 255, .22);
+  --shadow-lg: 0 4px 8px rgba(0, 0, 0, .4), 0 16px 44px -12px rgba(124, 92, 255, .3);
+  --ok: #4ADE80;
+  --warn: #FBBF24;
+  --off: #5C5687;
+  --danger: #FB7185;
+}
+
+/* ── 玻璃拟态：冷蓝深底 + 高透明面板 + 光泽边 ── */
+html[data-theme='glass'] {
+  --canvas: #141E2C;
+  --panel: rgba(30, 44, 64, .62);
+  --ink: #EAF2FB;
+  --ink-2: #9DB2C9;
+  --ink-3: #64798F;
+  --line: rgba(157, 178, 201, .22);
+  --line-strong: rgba(157, 178, 201, .38);
+  --accent: #4FA8E8;
+  --accent-weak: rgba(79, 168, 232, .16);
+  --accent-hover: #6FBDF2;
+  --accent-soft: rgba(79, 168, 232, .1);
+  --accent-grad: linear-gradient(135deg, #4FA8E8, #7EE8C7);
+  --agent: #E8B04F;
+  --agent-weak: rgba(232, 176, 79, .14);
+  --surface-2: rgba(20, 30, 44, .5);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, .25);
+  --shadow-md: 0 2px 6px rgba(0, 0, 0, .3), 0 8px 32px rgba(0, 0, 0, .28);
+  --shadow-lg: 0 4px 10px rgba(0, 0, 0, .35), 0 20px 48px -12px rgba(0, 0, 0, .45);
+  --backdrop-blur: blur(14px) saturate(1.4);
+  --ok: #34D399;
+  --warn: #FCD34D;
+  --off: #52708C;
+  --danger: #F87171;
+}
+
+/* ── 复古高雅：暖纸底 + 墨绿鎏金 + 衬线展示 ── */
+html[data-theme='classic'] {
+  --canvas: #F5F0E6;
+  --panel: #FDFBF5;
+  --ink: #2C2A24;
+  --ink-2: #635E4F;
+  --ink-3: #948D78;
+  --line: #E2DAC8;
+  --line-strong: #CFC5AC;
+  --accent: #2E5D4B;
+  --accent-weak: #E4EDE4;
+  --accent-hover: #24493A;
+  --accent-soft: #F0F4EC;
+  --accent-grad: linear-gradient(135deg, #2E5D4B, #8C7A3E);
+  --agent: #A0752B;
+  --agent-weak: #F2E9D4;
+  --surface-2: #F8F4EA;
+  --shadow-sm: 0 1px 2px rgba(60, 50, 30, .06), 0 1px 3px rgba(60, 50, 30, .08);
+  --shadow-md: 0 2px 4px rgba(60, 50, 30, .08), 0 8px 24px -8px rgba(60, 50, 30, .16);
+  --shadow-lg: 0 4px 8px rgba(60, 50, 30, .1), 0 16px 40px -12px rgba(60, 50, 30, .2);
+  --ok: #5B7A3E;
+  --warn: #A0752B;
+  --off: #A89F8A;
+  --danger: #A34430;
+}
+
+/* 兼容旧引用：html.dark 主题（暗黑模式）映射到 data-theme=dark 的值 */
+html.dark:not([data-theme]) {
+  --canvas: #0F1513;
 }

@@ -253,6 +253,13 @@ async function remove(a: Applet) {
   }
 }
 
+function handleRowCmd(row: Applet, cmd: string) {
+  if (cmd.startsWith('status:')) { changeStatus(row, cmd.slice(7)); return; }
+  if (cmd === 'authorize-user') { openAuthorizeDialog(row); return; }
+  if (cmd === 'authorize-agent') { openAgentGrant(row); return; }
+  if (cmd === 'delete') { remove(row); return; }
+}
+
 function onWizardCreated() {
   wizardVisible.value = false;
   load();
@@ -300,33 +307,33 @@ function onWizardCreated() {
           <span v-else class="muted">—</span>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="420" align="right">
+      <el-table-column label="操作" width="230" align="left" class-name="ops-col">
         <template #default="{ row }">
-          <el-dropdown v-if="TRANSITIONS[row.status]?.length" trigger="click" @command="(to: string) => changeStatus(row, to)">
-            <el-button size="small">状态</el-button>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item v-for="t in TRANSITIONS[row.status]" :key="t.to" :command="t.to">{{ t.label }}</el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
-          <el-tooltip content="选择哪些用户可以使用该小程序" placement="top">
-            <el-button size="small" @click="openAuthorizeDialog(row)">授权</el-button>
-          </el-tooltip>
-          <el-tooltip content="批准某个 agent 操作（修改）此小程序" placement="top">
-            <el-button size="small" @click="openAgentGrant(row)">授权 Agent</el-button>
-          </el-tooltip>
-          <el-tooltip content="名称/图标/展示方式/本应用专属配额" placement="top">
-            <el-button size="small" @click="openEdit(row)">编辑</el-button>
-          </el-tooltip>
-          <el-tooltip content="该小程序的完整操作时间线：谁在何时做了什么" placement="top">
-            <el-button size="small" @click="openHistory(row)">历史</el-button>
-          </el-tooltip>
-          <el-button v-if="row.open_prs" size="small" type="primary" @click="mergePR(row)">合并 PR</el-button>
-          <el-tooltip content="静态规范 + 运行时完整性 + 数据层健康的综合检查，报告可复制给 agent" placement="top">
-            <el-button size="small" @click="checkReport(row)">健康报告</el-button>
-          </el-tooltip>
-          <el-button size="small" type="danger" plain @click="remove(row)">删除</el-button>
+          <div class="ops-row">
+            <el-tooltip content="名称/图标/展示方式/专属配额" placement="top">
+              <el-button size="small" @click="openEdit(row)">编辑</el-button>
+            </el-tooltip>
+            <el-tooltip content="静态规范 + 运行时 + 数据层综合检查" placement="top">
+              <el-button size="small" @click="checkReport(row)">健康报告</el-button>
+            </el-tooltip>
+            <el-tooltip content="该小程序的完整操作时间线" placement="top">
+              <el-button size="small" @click="openHistory(row)">历史</el-button>
+            </el-tooltip>
+            <el-button v-if="row.open_prs" size="small" type="primary" @click="mergePR(row)">合并 PR</el-button>
+            <el-dropdown trigger="click" @command="(cmd: string) => handleRowCmd(row, cmd)">
+              <el-button size="small">更多</el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item v-for="t in TRANSITIONS[row.status] ?? []" :key="t.to" :command="'status:' + t.to">
+                    状态 → {{ t.label }}
+                  </el-dropdown-item>
+                  <el-dropdown-item v-if="TRANSITIONS[row.status]?.length" divided command="authorize-user">授权用户…</el-dropdown-item>
+                  <el-dropdown-item command="authorize-agent">授权 Agent…</el-dropdown-item>
+                  <el-dropdown-item command="delete" divided>删除小程序…</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
+          </div>
         </template>
       </el-table-column>
     </el-table>
@@ -463,6 +470,8 @@ h1 { font-size: 17px; margin: 0; }
 .appname .ic.img { object-fit: cover; background: var(--surface-2); }
 .appname .path { font-size: 11px; color: var(--ink-3); font-family: ui-monospace, monospace; }
 .muted { color: var(--ink-3); }
+.ops-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.ops-row .el-button { margin: 0; }
 .row-testing td { background: color-mix(in srgb, var(--warn) 8%, transparent) !important; }
 .row-enabled td { background: color-mix(in srgb, var(--ok) 6%, transparent) !important; }
 .row-disabled td { background: color-mix(in srgb, var(--off) 8%, transparent) !important; }
