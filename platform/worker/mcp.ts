@@ -306,6 +306,8 @@ async function importData(env: McpEnv, agent: { id: number; name: string }, args
   const manifest = JSON.parse(snap.value) as Record<string, { columns: Record<string, string> }>;
   if (!manifest[table]) return toolDenied('TABLE_NOT_FOUND', { table });
   const allowed = new Set(Object.keys(manifest[table].columns));
+  // 清单不携带 required 标记（快照只存 name→type）——required 列由 D1 NOT NULL 兜底，
+  // 但把常见 NOT NULL 错误转为清晰提示（见下方 catch）
 
   // 目标用户
   const user = await env.DB.prepare(`SELECT id FROM t_users WHERE username = ?`).bind(asUser).first<{ id: number }>();
@@ -337,7 +339,15 @@ async function importData(env: McpEnv, agent: { id: number; name: string }, args
       `INSERT INTO ${appletTable(appletId, table)} (user_id, ${keys.map((k) => `"${k}"`).join(', ')}) VALUES (?, ${keys.map(() => '?').join(', ')})`
     ).bind(user.id, ...Object.values(vals));
   });
-  await env.DB.batch(stmts);
+  try {
+    await env.DB.batch(stmts);
+  } catch (e) {
+    if (e instanceof Error && /NOT NULL constraint failed: [^.]+\.([a-z_]+)/i.test(e.message)) {
+      const col = e.message.match(/NOT NULL constraint failed: [^.]+\.([a-z_]+)/i)![1];
+      return toolDenied('REQUIRED_FIELD', { table, column: col, message: `列 ${col} 为必填（NOT NULL），导入行中缺失或为 null` });
+    }
+    throw e;
+  }
 
   await env.DB.prepare(`INSERT INTO t_audit_logs (actor_type, actor_id, action, target, detail) VALUES ('agent', ?, 'agent.import_data', ?, ?)`)
     .bind(String(agent.id), appletId, JSON.stringify({ table, rows: clean.length, as_user: asUser })).run();

@@ -108,12 +108,12 @@ describe('protocol', () => {
     expect((await r2.json() as any).error.code).toBe(-32700);
   });
 
-  it('tools/list exposes the four tools', async () => {
+  it('tools/list exposes the six tools', async () => {
     const code = await makeAccessCode();
     const r = await rpc({ jsonrpc: '2.0', id: 3, method: 'tools/list' }, code);
     const json: any = await r.json();
     const names = json.result.tools.map((t: any) => t.name).sort();
-    expect(names).toEqual(['agent_apply', 'check_applet', 'get_spec', 'get_status', 'submit_applet'].sort());
+    expect(names).toEqual(['agent_apply', 'check_applet', 'get_spec', 'get_status', 'submit_applet', 'import_data'].sort());
   });
 });
 

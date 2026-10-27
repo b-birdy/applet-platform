@@ -64,6 +64,7 @@ mcpRoutes.post('/mcp', async (c) => {
           { name: 'check_applet', description: '对文件集跑规范检查，返回 issues', inputSchema: { type: 'object', properties: { applet_id: { type: 'string' }, files: { type: 'object', additionalProperties: { type: 'string' } } }, required: ['applet_id', 'files'] } },
           { name: 'submit_applet', description: '提交小程序（建分支+PR）；error 级问题阻断', inputSchema: { type: 'object', properties: { applet_id: { type: 'string' }, name: { type: 'string' }, files: { type: 'object', additionalProperties: { type: 'string' } } }, required: ['applet_id', 'name', 'files'] } },
           { name: 'get_status', description: '查询提交状态与检查报告（限已归属 applet）', inputSchema: { type: 'object', properties: { applet_id: { type: 'string' } }, required: ['applet_id'] } },
+          { name: 'import_data', description: '向你名下小程序的数据表批量导入数据行（归属指定用户，过配额与列校验）', inputSchema: { type: 'object', properties: { applet_id: { type: 'string' }, table: { type: 'string' }, rows: { type: 'array', items: { type: 'object' } }, as_user: { type: 'string' } }, required: ['applet_id', 'table', 'rows'] } },
         ],
       }).body);
     case 'tools/call': {
