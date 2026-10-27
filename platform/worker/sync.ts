@@ -124,6 +124,18 @@ export async function syncOnce(env: SyncEnv): Promise<{ added: string[]; missing
     }
   }
 
+  // 存量应用版本号回填（仅 version 为空时；补齐后此循环零 GitHub 调用）
+  const noVer = (await env.DB.prepare(`SELECT path FROM t_applets WHERE version IS NULL`).all<{ path: string }>()).results;
+  for (const r of noVer) {
+    if (!repoSlugs.has(r.path)) continue;
+    const raw = await env.GITHUB.getContent('main', `applets/${r.path}/applet.json`);
+    if (!raw) continue;
+    try {
+      const ver = normalizeVersion(JSON.parse(new TextDecoder().decode(raw)).version);
+      if (ver) await env.DB.prepare(`UPDATE t_applets SET version = ? WHERE path = ?`).bind(ver, r.path).run();
+    } catch { /* 清单坏，跳过 */ }
+  }
+
   return { added, missing };
 }
 
