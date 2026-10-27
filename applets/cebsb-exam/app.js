@@ -981,6 +981,7 @@
       if (el) el.classList.toggle('hidden', v !== view);
     });
     state.view = view;
+    if (view === 'home') { renderLearnStat(); }   // 回到首页时刷新学习统计
   }
 
   /* ------------------------- 数据装配 ------------------------- */
@@ -1015,12 +1016,44 @@
     state.overview = {
       total: state.cards.length,
       tested: tested,
+      learned: tested,                                   // 已在统计表里有练习记录的字
+      mastered: state.cards.filter(function (c) {
+        return (Number(c.correct) || 0) >= 2;            // 累计答对 ≥2 次视为已掌握
+      }).length,
+      answered_total: sumTotal,
       overall_accuracy: sumTotal ? Math.round(sumRight / sumTotal * 1000) / 10 : 0,
       pool_all: state.cards.length
     };
     if ($('home-total')) $('home-total').textContent = state.cards.length;
     if ($('count-max')) $('count-max').textContent = state.cards.length;
+    renderLearnStat();
     return Promise.resolve();
+  }
+
+  /** 首页顶部的「学习统计」面板：数据源为平台表 cebsb_stats / cebsb_answers。 */
+  function renderLearnStat() {
+    // 直接从当前装配好的卡片数组汇总，答完题 / 回到首页都能立刻反映最新数据
+    var learned = 0, mastered = 0, sumTotal = 0, sumRight = 0;
+    (state.cards || []).forEach(function (c) {
+      var n = Number(c.correct) || 0;
+      var t = Number(c.total) || 0;
+      if (t > 0) learned += 1;                  // 统计表里有练习记录 = 已录入
+      if (n >= 2) mastered += 1;                // 累计答对 ≥2 次 = 已掌握
+      sumTotal += t;
+      sumRight += n;
+    });
+    var acc = sumTotal ? Math.round(sumRight / sumTotal * 1000) / 10 : 0;
+    if (state.overview) {
+      state.overview.learned = learned;
+      state.overview.mastered = mastered;
+      state.overview.answered_total = sumTotal;
+      state.overview.overall_accuracy = acc;
+    }
+    if ($('stat-learned')) $('stat-learned').textContent = learned;
+    if ($('stat-mastered')) $('stat-mastered').textContent = mastered;
+    if ($('stat-accuracy')) {
+      $('stat-accuracy').textContent = sumTotal ? (acc + '%') : '--';   // 没答过时不显示 0%
+    }
   }
 
   /** 重新装配卡片数组（切换页面时刷新统计）。 */
@@ -1721,6 +1754,7 @@
           break;
         }
       }
+      renderLearnStat();   // 每答一题即时更新首页学习统计
     }).catch(function () {
       toast('成绩保存失败，请稍后重试');
     });

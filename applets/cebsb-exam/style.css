@@ -182,6 +182,35 @@ body {
 .brand-title { margin: 0; font-size: 22px; letter-spacing: 1px; }
 .brand-sub { margin: 4px 0 0; color: var(--z-ink-3); font-size: 13px; }
 
+/* 学习统计面板（首页顶部）：数据来自平台数据表，按登录用户隔离 */
+.learn-stat {
+  background: var(--z-card);
+  border: 1px solid var(--z-line);
+  border-radius: var(--z-radius);
+  padding: 12px 14px 10px;
+  margin-bottom: 16px;
+  box-shadow: var(--z-shadow-sm);
+}
+.learn-stat-title {
+  font-size: 13px; font-weight: 600; color: var(--z-ink-2);
+  letter-spacing: 1px; margin-bottom: 10px;
+}
+.learn-stat-grid { display: flex; gap: 8px; }
+.learn-stat-item {
+  flex: 1;
+  background: var(--z-primary-soft);
+  border-radius: 12px;
+  padding: 10px 4px;
+  text-align: center;
+  min-width: 0;
+}
+.learn-stat-num {
+  font-size: 20px; font-weight: 700; color: var(--z-primary);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.learn-stat-label { font-size: 11px; color: var(--z-ink-3); margin-top: 2px; }
+.learn-stat-foot { margin-top: 8px; font-size: 11px; color: var(--z-ink-3); text-align: center; }
+
 .home-stat {
   background: var(--z-primary-soft);
   border-radius: var(--z-radius);
