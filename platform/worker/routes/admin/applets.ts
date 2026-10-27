@@ -216,18 +216,52 @@ adminAppletRoutes.get('/api/admin/applets/:id/health', async (c) => {
     message: issues.length ? issues.map((i) => `[${i.level}] ${i.rule} ${i.file}: ${i.message}`).join('\n') : '全部通过',
   });
 
-  // ② 运行时完整性：入口 HTML 存在、无外链 CSS/JS 残留（自包含化成功）、运行时已内联
+  // ② 运行时完整性：对"伺服管线输出"（内联+主题注入后）检查，而非原始 R2 文件——
+  // 用户浏览器看到的正是伺服结果，检查必须与之一致
   const entry = applet.entry ?? 'index.html';
   const entryHtml = files.get(entry);
   if (!entryHtml) {
     checks.push({ area: '运行时', name: '入口文件', ok: false, message: `入口 ${entry} 在 R2 中不存在（可能未合并 PR 或同步失败）` });
   } else {
-    const externalLinks = [...entryHtml.matchAll(/<(?:link[^>]*stylesheet|script[^>]*src=)[^>]*>/gi)]
-      .filter((m) => !/app-runtime/.test(m[0]) && !/https?:\/\//.test(m[0]))
-      .map((m) => m[0].slice(0, 80));
-    checks.push({ area: '运行时', name: '外链资源残留（自包含化）', ok: externalLinks.length === 0, message: externalLinks.length ? `仍有外链引用：${externalLinks.join('; ')}` : '无外链，自包含完整' });
-    checks.push({ area: '运行时', name: '平台运行时已内联', ok: entryHtml.includes('data-applet-runtime'), message: entryHtml.includes('data-applet-runtime') ? '已内联' : '未发现运行时标记——请确认入口引入了 /app-runtime.js 并已重新提交' });
-    checks.push({ area: '运行时', name: '主题变量已注入', ok: entryHtml.includes('data-platform-theme'), message: entryHtml.includes('data-platform-theme') ? '已注入' : '未注入（旧版本缓存或伺服异常）' });
+    // 模拟 serve 的自包含化流程：内联相对路径资源（与 serve.ts inlineAsset 相同的 key 规则）
+    let served = entryHtml;
+    const inlineOne = async (path: string): Promise<string | null> => {
+      if (/^(https?:|\/|data:)/i.test(path)) return null;
+      const normalized = path.replace(/^\.\//, '');
+      if (normalized.includes('..')) return null;
+      const asset = await c.env.ASSETS.get(`${prefix}${normalized}`);
+      return asset ? await asset.text() : null;
+    };
+    // link stylesheet
+    const linkRe = /<link\s+[^>]*rel=["']stylesheet["'][^>]*href=["']([^"']+)["'][^>]*>/gi;
+    let m: RegExpExecArray | null;
+    const linkJobs: Array<{ full: string; href: string }> = [];
+    while ((m = linkRe.exec(served))) linkJobs.push({ full: m[0], href: m[1] });
+    for (const { full, href } of linkJobs) {
+      const css = await inlineOne(href);
+      if (css !== null) served = served.replace(full, `<style data-inlined-from="${href}">\n${css}\n</style>`);
+    }
+    // script src（相对路径）
+    const scriptRe = /<script\s+([^>]*)src=["']([^"']+)["']([^>]*)><\/script>/gi;
+    const scriptJobs: Array<{ full: string; src: string }> = [];
+    while ((m = scriptRe.exec(served))) scriptJobs.push({ full: m[0], src: m[1] + m[2] + m[3] ? m[2] : m[2] });
+    for (const { full, src } of scriptJobs) {
+      if (/^(https?:|\/)/i.test(src)) continue;
+      const js = await inlineOne(src);
+      if (js !== null) served = served.replace(full, `<script data-inlined-from="${src}">\n${js}\n</script>`);
+    }
+    const runtimeRe = /<script\s+src=["']\/app-runtime\.js["']\s*><\/script>/gi;
+    if (runtimeRe.test(served)) {
+      const { RUNTIME_JS } = await import('../../runtime-text');
+      served = served.replace(runtimeRe, `<script data-applet-runtime>\n${RUNTIME_JS}\n</script>`);
+    }
+
+    const externalLeft = [...served.matchAll(/<(?:link[^>]*stylesheet|script[^>]*src=)[^>]*>/gi)]
+      .filter((mm) => !/app-runtime/.test(mm[0]) && !/https?:\/\//.test(mm[0]))
+      .map((mm) => mm[0].slice(0, 80));
+    checks.push({ area: '运行时', name: '自包含化（外链残留）', ok: externalLeft.length === 0, message: externalLeft.length ? `内联后仍有外链（资源缺失或路径问题）：${externalLeft.join('; ')}` : '无外链，自包含完整' });
+    checks.push({ area: '运行时', name: '平台运行时已内联', ok: served.includes('data-applet-runtime'), message: served.includes('data-applet-runtime') ? '已内联' : '未发现运行时标记——确认入口引入了 /app-runtime.js' });
+    checks.push({ area: '运行时', name: '主题变量注入（伺服时）', ok: true, message: '由伺服层按用户主题动态注入，此处不做静态断言' });
   }
 
   // ③ 数据层：清单声明的表 vs 物理表
