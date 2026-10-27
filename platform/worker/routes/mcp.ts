@@ -156,8 +156,10 @@ mcpAdminRoutes.post('/api/admin/agents/:id/revoke', async (c) => {
   const agent = await c.env.DB.prepare(`SELECT id, name, status FROM t_agents WHERE id = ?`).bind(id).first() as { id: number; name: string; status: string } | null;
   if (!agent) return c.json({ error: 'NOT_FOUND' }, 404);
   if (agent.status !== 'approved') return c.json({ error: 'NOT_APPROVED' }, 409);
-  // 吊销即清 key_hash → 立即 401；归属保留（记录性）
-  await c.env.DB.prepare(`UPDATE t_agents SET status = 'revoked', key_hash = NULL WHERE id = ?`).bind(id).run();
+  // 吊销即硬删除（界面与库中均不保留）；agent 提交过的小程序归属一并清除，准入码使用记录断链
+  await c.env.DB.prepare(`UPDATE t_agent_access_codes SET used_by = NULL WHERE used_by = ?`).bind(id).run();
+  await c.env.DB.prepare(`DELETE FROM t_agent_applets WHERE agent_id = ?`).bind(id).run();
+  await c.env.DB.prepare(`DELETE FROM t_agents WHERE id = ?`).bind(id).run();
   const auth = c.get('auth');
   await logAudit(c.env.DB, { actor_type: 'user', actor_id: String(auth.userId), action: 'agent.revoke', target: agent.name });
   return c.json({ ok: true });

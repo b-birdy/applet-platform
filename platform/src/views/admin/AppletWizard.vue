@@ -1,8 +1,8 @@
 <script setup lang="ts">
-// 新增小程序五步向导（D16）：①基本信息 ②开发提示词 ③自检提示词 ④问题清单 ⑤上传提示词 → 轮询识别
+// 新增小程序三步向导：①基本信息+需求（SDD） ②开发提示词（自检+上传已合并） ③等待识别 → 轮询
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import { ElMessage } from 'element-plus';
-import { devPrompt, checkPrompt, uploadPrompt, existingAppletPrompt } from '../../data/prompts';
+import { devPrompt, existingAppletPrompt } from '../../data/prompts';
 import { api } from '../../api/client';
 import IconPicker from '../../components/IconPicker.vue';
 
@@ -45,10 +45,8 @@ function reqMeta() {
 }
 const hasExisting = ref(false); // 已开发完成的成品 → 显示接入式提示词
 const dev = computed(() => (hasExisting.value ? existingAppletPrompt({ id: form.value.id, name: form.value.name, icon: form.value.icon || undefined, ...reqMeta() }, mcpUrl, accessCode.value || undefined) : devPrompt({ id: form.value.id, name: form.value.name, icon: form.value.icon || undefined, ...reqMeta() }, mcpUrl, accessCode.value || undefined)));
-const check = computed(() => checkPrompt(form.value, mcpUrl));
-const upload = computed(() => uploadPrompt(form.value, mcpUrl));
 
-const stepTitles = ['基本信息', '开发', '规范自检', '检查结果', '上传'];
+const stepTitles = ['基本信息', '开发并上传', '等待识别'];
 
 async function copy(text: string) {
   await navigator.clipboard.writeText(text);
@@ -61,13 +59,13 @@ async function copy(text: string) {
 
 function next() {
   if (!canNext.value) return;
-  step.value = Math.min(step.value + 1, 4);
+  step.value = Math.min(step.value + 1, 2);
 }
 function prev() {
   step.value = Math.max(step.value - 1, 0);
 }
 
-// 第 4 步开始轮询：等新 applet 出现（测试态）→ 完成向导
+// 第 3 步开始轮询：等新 applet 出现（测试态）→ 完成向导
 let pollTimer: number | undefined;
 const waiting = ref(false);
 const detected = ref(false);
@@ -169,22 +167,20 @@ function startPolling() {
       <p class="hint">ID 即小程序在仓库中的目录名（applets/&lt;ID&gt;/），创建后不可更改。功能需求会整合进下一步的提示词。</p>
     </section>
 
-    <!-- ②开发 ③自检 ⑤上传：提示词卡片 -->
-    <section v-if="step === 1 || step === 2 || step === 4" class="body">
-      <h3>{{ step === 1 ? (hasExisting ? '复制提示词给你的 agent（接入已有小程序）' : '把下面的提示词复制给你的 agent（开发）') : step === 2 ? '复制提示词让 agent 自检并修正' : '复制提示词让 agent 上传（提交 PR）' }}</h3>
+    <!-- ②开发（含自检+上传）：提示词卡片 -->
+    <section v-if="step === 1" class="body">
+      <h3>{{ hasExisting ? '复制提示词给你的 agent（接入已有小程序）' : '把下面的提示词复制给你的 agent（开发 → 自检 → 上传，一次完成）' }}</h3>
       <div class="prompt-card">
-        <pre>{{ step === 1 ? dev : step === 2 ? check : upload }}</pre>
+        <pre>{{ dev }}</pre>
       </div>
       <div class="row">
-        <el-button type="primary" @click="copy(step === 1 ? dev : step === 2 ? check : upload)">复制提示词</el-button>
-        <span v-if="step === 1" class="hint">agent 完成开发后，进入下一步做规范自检。</span>
-        <span v-else-if="step === 2" class="hint">agent 报告 issues 为空（或仅剩可解释的 warn）后，进入下一步。</span>
-        <span v-else class="hint">agent 上传后平台自动建 PR；下方按钮开始等待平台识别。</span>
+        <el-button type="primary" @click="copy(dev)">复制提示词</el-button>
+        <span class="hint">agent 会自动完成开发、规范自检并上传建 PR；完成后进入下一步等待平台识别。</span>
       </div>
     </section>
 
-    <!-- 第 4 步：等待识别 -->
-    <section v-if="step === 3" class="body center">
+    <!-- 第 3 步：等待识别 -->
+    <section v-if="step === 2" class="body center">
       <template v-if="!detected">
         <el-icon class="spin" :size="28"><i class="el-icon-loading" /></el-icon>
         <p>{{ waiting ? `等待 agent 完成上传…（每 5 秒检查一次「${form.id}」是否出现在小程序列表）` : 'agent 上传完成后点击下方按钮开始检测。' }}</p>
@@ -200,11 +196,8 @@ function startPolling() {
     </section>
 
     <footer class="foot">
-      <el-button v-if="step > 0 && step !== 3" @click="prev">上一步</el-button>
-      <el-button v-if="step < 3 && step !== 4" type="primary" :disabled="!canNext" @click="next">
-        {{ step === 2 ? 'agent 自检完成后，下一步' : '下一步' }}
-      </el-button>
-      <el-button v-if="step === 4 && detected" type="success" @click="emit('created')">完成</el-button>
+      <el-button v-if="step > 0 && step !== 2" @click="prev">上一步</el-button>
+      <el-button v-if="step < 2" type="primary" :disabled="!canNext" @click="next">下一步</el-button>
     </footer>
   </div>
 </template>

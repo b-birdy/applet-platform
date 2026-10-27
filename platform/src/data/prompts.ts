@@ -38,13 +38,13 @@ export function devPrompt(a: AppletMeta, mcpUrl: string, accessCode?: string): s
   const codeLine = accessCode
     ? `连接凭一次性准入码（24 小时内有效）：${accessCode}`
     : `连接需要一次性准入码（向平台管理员索取）`;
-  return `请为本平台开发一个小程序，然后交付可上传的文件集。
+  return `请为本平台开发一个小程序，然后自检并交付可上传的文件集。
 
 【目标】开发小程序「${a.name}」（id: ${a.id}${a.icon ? `，图标建议 ${a.icon}` : ''}）。
 ${requirementBlock(a)}
 【第一步 · 获取规范】
 连接平台 MCP 服务（Streamable HTTP）：${mcpUrl}
-${codeLine}。连接后先调用工具 get_spec（不传参数获取全部章节），逐条阅读 structure / manifest / data / security / upload 五节规范。
+${codeLine}。连接后先调用工具 agent_apply 申请接入，等管理员审批拿到 API Key 后继续。然后调用工具 get_spec（不传参数获取全部章节），逐条阅读 structure / manifest / data / security / upload 五节规范。
 
 【第二步 · 开发】
 按规范在本地目录 ${a.id}/ 中完成开发：
@@ -53,27 +53,14 @@ ${RULES}
 · 入口 HTML 必须引入 <script src="/app-runtime.js"></script>；
 · 界面遵循平台设计语言（消费 --canvas/--panel/--ink/--accent 等 CSS 变量，自动适配深浅色）。
 
-完成后把所有文件放在 ${a.id}/ 目录下准备检查。`;
-}
+完成后把所有文件放在 ${a.id}/ 目录下。
 
-export function checkPrompt(a: AppletMeta, mcpUrl: string): string {
-  return `请对小程序「${a.name}」（id: ${a.id}）做上传前的规范自检并修正。
-
-【准备】
-连接平台 MCP 服务：${mcpUrl}（准入码向管理员索取，若已连接可复用会话）。
-
-【自检】
-调用工具 check_applet，参数：
-· applet_id: "${a.id}"
-· files: ${a.id}/ 目录下全部文件（相对路径 → 文本内容）
-
-【修正】
-对返回的 issues 列表逐条处理：
-· level 为 "error" 的问题必须全部修正（会阻断上传）；
-· level 为 "warn" 的问题评估后能修则修（如 size.loc 行数超限可说明理由交管理员裁定）；
-· 修正后再次调用 check_applet，重复直到 issues 为空（或仅剩可解释的 warn）。
-
-${RULES}`;
+【第三步 · 自检并上传】
+1. 调用工具 check_applet({ applet_id: "${a.id}", files })，把所有文件作为 files 传入；
+2. 对返回的 issues 逐条处理：level 为 "error" 的必须全部修正（会阻断上传）；level 为 "warn" 的评估后能修则修（如 size.loc 行数超限可说明理由交管理员裁定）；
+3. 修正后再次 check_applet，重复直到 issues 为空（或仅剩可解释的 warn）；
+4. 然后直接调用工具 submit_applet 提交（参数：applet_id: "${a.id}"、name: "${a.name}"、files 为 ${a.id}/ 目录全部文件），平台自动建 PR；
+5. 记录返回的 pr_number 并报告给管理员（如「${a.id} 已提交，PR #N」）；若返回 issues 含 error，修正后重新提交。`;
 }
 
 export function existingAppletPrompt(a: AppletMeta, mcpUrl: string, accessCode?: string): string {
@@ -103,26 +90,6 @@ ${requirementBlock(a)}
 调用 check_applet({ applet_id: "${a.id}", files }) 自检，把所有 error 级问题修正至清零；然后调用 submit_applet 提交（平台自动建 PR），报告返回的 pr_number 给管理员。
 
 ${RULES}`;
-}
-
-export function uploadPrompt(a: AppletMeta, mcpUrl: string): string {
-  return `小程序「${a.name}」（id: ${a.id}）已通过自检，现在执行上传。
-
-【准备】
-连接平台 MCP 服务：${mcpUrl}（需要已获批的 agent API key；若是首次使用该服务，先用一次性准入码调用 agent_apply 申请，等管理员审批后再继续）。
-
-【上传】
-调用工具 submit_applet，参数：
-· applet_id: "${a.id}"
-· name: "${a.name}"
-· files: ${a.id}/ 目录下全部文件（相对路径 → 文本内容）
-
-【提交后】
-· 记录返回的 pr_number；
-· 调用 get_status 确认 PR 状态为 open、check_report 无 error 级问题；
-· 向管理员报告：${a.id} 已提交（PR #<pr_number>），等待平台内审阅合并。
-
-注意：若 submit_applet 返回 issues（含 error），回到检查环节修正后重新提交；若返回 AGENT_SCOPE，说明该小程序归属其他 agent，停止操作并报告管理员。`;
 }
 
 // 新 Agent 接管已有小程序（管理员在小程序管理「更多」里生成，准入码自动内嵌）

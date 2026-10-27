@@ -136,6 +136,22 @@ export async function syncOnce(env: SyncEnv): Promise<{ added: string[]; missing
     } catch { /* 清单坏，跳过 */ }
   }
 
+  // open PR 状态对账：PR 可能在 GitHub 网页上被直接合并（平台外），此时 t_prs 仍是 open
+  // 且合并后同步从未跑过 → R2 拉不到文件。对账发现 merged/closed 即修正并补刷新。
+  const appletIds = new Map(registered.map((a) => [a.id, a.path]));
+  for (const pr of (await env.DB.prepare(`SELECT applet_id, pr_number FROM t_prs WHERE state = 'open'`).all<{ applet_id: number; pr_number: number }>()).results) {
+    const slug = appletIds.get(pr.applet_id);
+    if (!slug) continue;
+    try {
+      const remote = await env.GITHUB.getPR(pr.pr_number);
+      if (remote.state === 'open') continue;
+      await env.DB.prepare(`UPDATE t_prs SET state = ? WHERE applet_id = ? AND pr_number = ?`).bind(remote.state, pr.applet_id, pr.pr_number).run();
+      if (remote.state === 'merged' && repoSlugs.has(slug)) await refreshApplet(env, slug);
+    } catch (e) {
+      console.error(`PR reconcile ${slug}#${pr.pr_number} failed:`, e);
+    }
+  }
+
   return { added, missing };
 }
 

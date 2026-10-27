@@ -22,7 +22,7 @@ async function load() {
     api<{ applets: Applet[] }>('/api/admin/applets'),
   ]);
   pending.value = a.agents.filter((x) => x.status === 'pending');
-  approved.value = a.agents.filter((x) => x.status !== 'pending');
+  approved.value = a.agents.filter((x) => x.status === 'approved');
   applets.value = apps.applets;
 }
 onMounted(load);
@@ -51,11 +51,24 @@ async function approve(a: Agent) {
   } catch { return; }
   try {
     const res = await api<{ key: string }>(`/api/admin/agents/${a.id}/approve`, { method: 'POST', body: {} });
-    // 密钥仅此一次展示
+    // 密钥仅此一次展示；「复制并关闭」一键复制成可直接转发给 agent 的消息
     await ElMessageBox.alert(
-      `<p>请立即保存以下 API Key（仅此一次展示）：</p><pre style="user-select:all">${res.key}</pre>`,
+      `<p>请立即保存以下 API Key（仅此一次展示）：</p><pre class="key-box" style="user-select:all; background: var(--canvas); border: 1px solid var(--line); border-radius: 8px; padding: 12px; margin: 10px 0 0; word-break: break-all; white-space: pre-wrap; font-size: 12.5px; line-height: 1.6; max-height: 200px; overflow: auto;">${res.key}</pre>`,
       'API Key 已签发',
-      { dangerouslyUseHTMLString: true, confirmButtonText: '我已保存' }
+      {
+        dangerouslyUseHTMLString: true,
+        confirmButtonText: '复制并关闭',
+        callback: async (action: string) => {
+          if (action === 'confirm') {
+            try {
+              await navigator.clipboard.writeText(`已签发API Key: ${res.key}`);
+              ElMessage.success('已复制，可直接发给 agent');
+            } catch {
+              ElMessage.warning('复制失败，请手动选中 Key 复制');
+            }
+          }
+        },
+      }
     );
     await load();
   } catch (e) {
@@ -76,12 +89,12 @@ async function reject(a: Agent) {
 
 async function revoke(a: Agent) {
   try {
-    await ElMessageBox.confirm(`吊销「${a.name}」的 API Key？吊销后该 agent 立即失去接入能力。`, '吊销 Agent', {
-      confirmButtonText: '吊销', cancelButtonText: '取消', type: 'warning', confirmButtonClass: 'el-button--danger',
+    await ElMessageBox.confirm(`吊销并删除「${a.name}」？该 agent 将立即失去接入能力，其条目从平台移除（其提交过的小程序保留）。`, '吊销 Agent', {
+      confirmButtonText: '吊销并删除', cancelButtonText: '取消', type: 'warning', confirmButtonClass: 'el-button--danger',
     });
   } catch { return; }
   await api(`/api/admin/agents/${a.id}/revoke`, { method: 'POST', body: {} });
-  ElMessage.success('已吊销');
+  ElMessage.success('已吊销并删除');
   await load();
 }
 
@@ -145,16 +158,11 @@ async function submitGrant() {
     <el-table v-else :data="approved" stripe>
       <el-table-column prop="name" label="标识" min-width="120" />
       <el-table-column prop="fingerprint" label="指纹" min-width="140" />
-      <el-table-column label="状态" width="90">
-        <template #default="{ row }">
-          <span class="st" :class="row.status === 'approved' ? 'ok' : 'off'"><i></i>{{ row.status === 'approved' ? '正常' : '已吊销' }}</span>
-        </template>
-      </el-table-column>
       <el-table-column prop="applet_count" label="可操作小程序" width="120" align="center" />
       <el-table-column label="操作" width="200" align="right">
         <template #default="{ row }">
-          <el-button v-if="row.status === 'approved'" size="small" @click="openGrant(row)">追加授权</el-button>
-          <el-button v-if="row.status === 'approved'" size="small" type="danger" plain @click="revoke(row)">吊销</el-button>
+          <el-button size="small" @click="openGrant(row)">追加授权</el-button>
+          <el-button size="small" type="danger" plain @click="revoke(row)">吊销</el-button>
         </template>
       </el-table-column>
     </el-table>
