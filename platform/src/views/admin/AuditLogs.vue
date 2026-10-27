@@ -2,6 +2,9 @@
 // 操作日志：只读流水 + 筛选
 import { ref, onMounted } from 'vue';
 import { api } from '../../api/client';
+import { useIsMobile } from '../../composables/useIsMobile';
+
+const { isMobile } = useIsMobile();
 
 type Log = {
   id: number; actor_type: string; actor_id: string | null; action: string;
@@ -89,29 +92,52 @@ function fmtDetail(d: string | null): string {
       </div>
     </header>
 
-    <el-table v-loading="loading" :data="logs" stripe>
-      <el-table-column prop="id" label="ID" width="70" />
-      <el-table-column prop="at" label="时间" width="165" />
+    <!-- 桌面：弹性表格（min-width 分配比例，无固定宽） -->
+    <el-table v-if="!isMobile" v-loading="loading" :data="logs" stripe>
+      <el-table-column prop="at" label="时间" min-width="150" />
       <el-table-column label="操作人" min-width="200">
         <template #default="{ row }">
           <span v-if="row.actor_type === 'agent'" class="agent-tag">{{ actorLabel(row) }}</span>
           <span v-else class="actor">{{ actorLabel(row) }}</span>
         </template>
       </el-table-column>
-      <el-table-column label="动作" width="170">
+      <el-table-column label="动作" min-width="130">
         <template #default="{ row }">
           <el-tooltip :content="row.action" placement="top">
             <span class="action-zh">{{ ACTION_ZH[row.action] ?? row.action }}</span>
           </el-tooltip>
         </template>
       </el-table-column>
-      <el-table-column prop="target" label="对象" width="140" />
-      <el-table-column label="详情" min-width="240">
+      <el-table-column prop="target" label="对象" min-width="110">
         <template #default="{ row }">
-          <span class="detail">{{ fmtDetail(row.detail) }}</span>
+          <span class="mono">{{ row.target ?? '—' }}</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="详情" min-width="260">
+        <template #default="{ row }">
+          <span class="detail">{{ fmtDetail(row.detail) || '—' }}</span>
         </template>
       </el-table-column>
     </el-table>
+
+    <!-- 移动端：卡片列表（无横向滚动） -->
+    <div v-else v-loading="loading" class="cards">
+      <div v-for="l in logs" :key="l.id" class="log-card">
+        <div class="card-top">
+          <el-tooltip :content="l.action" placement="top">
+            <span class="action-zh">{{ ACTION_ZH[l.action] ?? l.action }}</span>
+          </el-tooltip>
+          <span class="card-time">{{ l.at }}</span>
+        </div>
+        <div class="card-actor">
+          <span v-if="l.actor_type === 'agent'" class="agent-tag">{{ actorLabel(l) }}</span>
+          <span v-else class="actor">{{ actorLabel(l) }}</span>
+        </div>
+        <div v-if="l.target" class="card-row"><span class="k">对象</span><span class="mono">{{ l.target }}</span></div>
+        <div v-if="l.detail" class="card-row"><span class="k">详情</span><span class="detail">{{ fmtDetail(l.detail) }}</span></div>
+      </div>
+      <el-empty v-if="!loading && logs.length === 0" description="暂无日志" />
+    </div>
   </div>
 </template>
 
@@ -122,5 +148,17 @@ h1 { font-size: 17px; margin: 0; }
 .detail { font-size: 12px; color: var(--ink-3); font-family: ui-monospace, monospace; word-break: break-all; }
 .action-zh { cursor: help; border-bottom: 1px dashed var(--line-strong); }
 .actor { white-space: nowrap; }
-.agent-tag { white-space: nowrap; max-width: none; }
+.agent-tag { white-space: nowrap; }
+.mono { font-size: 12px; font-family: ui-monospace, monospace; }
+.cards { display: flex; flex-direction: column; gap: 10px; }
+.log-card {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+  padding: 10px 14px; font-size: 13px;
+}
+.card-top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
+.card-time { font-size: 11px; color: var(--ink-3); }
+.card-actor { margin-bottom: 4px; }
+.card-row { display: flex; gap: 8px; margin-top: 2px; align-items: baseline; }
+.card-row .k { font-size: 11px; color: var(--ink-3); flex: none; width: 30px; }
+.card-row .detail, .card-row .mono { word-break: break-all; min-width: 0; }
 </style>
