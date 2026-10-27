@@ -150,8 +150,8 @@ nav { flex: 1; display: flex; flex-direction: column; gap: 2px; }
 .theme-item .tick { margin-left: auto; }
 .as-btn { width: 100%; }
 .fold {
-  position: absolute; right: -1px; top: 50%; transform: translateY(-50%);
-  width: 18px; height: 44px; border: 1px solid var(--line); border-left: none;
+  position: absolute; left: 100%; top: 50%; transform: translateY(-50%);
+  width: 18px; height: 44px; border: 1px solid var(--line);
   background: var(--panel); color: var(--ink-3); cursor: pointer; z-index: 10;
   border-radius: 0 8px 8px 0; box-shadow: var(--shadow-sm);
   transition: color .12s ease;
