@@ -38,7 +38,8 @@ adminAppletRoutes.get('/api/admin/applets', async (c) => {
   const rows = (await c.env.DB.prepare(
     `SELECT a.id, a.name, a.path, a.icon, a.status, a.entry, a.display, a.created_at,
        (SELECT COUNT(*) FROM t_applet_acls acl WHERE acl.applet_id = a.id AND acl.allowed = 1) AS authorized_users,
-       (SELECT COUNT(*) FROM t_prs pr WHERE pr.applet_id = a.id AND pr.state = 'open') AS open_prs
+       (SELECT COUNT(*) FROM t_prs pr WHERE pr.applet_id = a.id AND pr.state = 'open') AS open_prs,
+       (SELECT pr_number FROM t_prs pr WHERE pr.applet_id = a.id AND pr.state = 'open' LIMIT 1) AS open_pr_number
      FROM t_applets a ORDER BY a.id`
   ).all() as any).results as any[];
 

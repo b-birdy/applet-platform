@@ -6,14 +6,17 @@ const RULES = `· 只做这个小程序本身，不要改动仓库里其他文�
 · 全程使用简体中文注释与界面文案；
 · 数据只能通过平台运行时 window.applet 存取，禁止任何绕过。`;
 
-export function devPrompt(a: AppletMeta, mcpUrl: string): string {
+export function devPrompt(a: AppletMeta, mcpUrl: string, accessCode?: string): string {
+  const codeLine = accessCode
+    ? `连接凭一次性准入码（24 小时内有效）：${accessCode}`
+    : `连接需要一次性准入码（向平台管理员索取）`;
   return `请为本平台开发一个小程序，然后交付可上传的文件集。
 
 【目标】开发小程序「${a.name}」（id: ${a.id}${a.icon ? `，图标建议 ${a.icon}` : ''}）。
 
 【第一步 · 获取规范】
 连接平台 MCP 服务（Streamable HTTP）：${mcpUrl}
-连接需要一次性准入码（向平台管理员索取）。连接后先调用工具 get_spec（不传参数获取全部章节），逐条阅读 structure / manifest / data / security / upload 五节规范。
+${codeLine}。连接后先调用工具 get_spec（不传参数获取全部章节），逐条阅读 structure / manifest / data / security / upload 五节规范。
 
 【第二步 · 开发】
 按规范在本地目录 ${a.id}/ 中完成开发：
@@ -45,14 +48,17 @@ export function checkPrompt(a: AppletMeta, mcpUrl: string): string {
 ${RULES}`;
 }
 
-export function existingAppletPrompt(a: AppletMeta, mcpUrl: string): string {
+export function existingAppletPrompt(a: AppletMeta, mcpUrl: string, accessCode?: string): string {
+  const codeLine = accessCode
+    ? `一次性准入码（24 小时内有效）：${accessCode}`
+    : `一次性准入码向管理员索取`;
   return `我有一个已经开发完成的小程序，请把它接入本平台并上传。
 
 【目标】把现成的小程序接入平台，id 定为「${a.id}」（显示名「${a.name}」）。
 
 【准备】
 连接平台 MCP 服务：${mcpUrl}
-· 首次使用：先用管理员给的一次性准入码调用 agent_apply 申请接入，等管理员审批拿到 API Key 后继续；
+· 准入码：${codeLine}。首次使用先用准入码调用 agent_apply 申请接入，等管理员审批拿到 API Key 后继续；
 · 已接入：直接用 API Key。
 
 【第一步 · 了解平台约定】

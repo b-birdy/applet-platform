@@ -5,6 +5,9 @@ import { ElMessage } from 'element-plus';
 import { devPrompt, checkPrompt, uploadPrompt, existingAppletPrompt } from '../../data/prompts';
 import { api } from '../../api/client';
 
+// 向导打开时自动生成一次性准入码（24h），直接内嵌进提示词，省一轮「向管理员要码」的对话
+const accessCode = ref('');
+
 const emit = defineEmits<{ created: [] }>();
 
 const step = ref(0);
@@ -19,7 +22,7 @@ const nameOk = computed(() => form.value.name.trim().length > 0);
 const canNext = computed(() => (step.value === 0 ? idOk.value && nameOk.value : true));
 
 const hasExisting = ref(false); // 已开发完成的成品 → 显示接入式提示词
-const dev = computed(() => (hasExisting.value ? existingAppletPrompt(form.value, mcpUrl) : devPrompt(form.value, mcpUrl)));
+const dev = computed(() => (hasExisting.value ? existingAppletPrompt(form.value, mcpUrl, accessCode.value || undefined) : devPrompt(form.value, mcpUrl, accessCode.value || undefined)));
 const check = computed(() => checkPrompt(form.value, mcpUrl));
 const upload = computed(() => uploadPrompt(form.value, mcpUrl));
 
@@ -46,6 +49,11 @@ const detected = ref(false);
 onMounted(async () => {
   const res = await api<{ applets: { path: string }[] }>('/api/admin/applets');
   knownPaths.value = new Set(res.applets.map((a) => a.path));
+  // 自动生成准入码（失败不阻断向导——提示词回退为「向管理员索取」文案）
+  try {
+    const code = await api<{ code: string }>('/api/admin/access-codes', { method: 'POST', body: {} });
+    accessCode.value = code.code;
+  } catch { /* 保持空串，提示词走索取文案 */ }
 });
 
 onBeforeUnmount(() => {

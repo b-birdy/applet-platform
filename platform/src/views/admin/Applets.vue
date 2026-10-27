@@ -8,7 +8,7 @@ import AppletWizard from './AppletWizard.vue';
 
 type Applet = {
   id: number; name: string; path: string; icon: string | null; status: string;
-  authorized_users: number; tables: number; open_prs: number; missing: number;
+  authorized_users: number; tables: number; open_prs: number; open_pr_number: number | null; missing: number;
 };
 type User = { id: number; username: string; role: string };
 
@@ -136,7 +136,7 @@ function copyReport() {
 
 async function mergePR(a: Applet) {
   await ElMessageBox.confirm(
-    `合并「${a.name}」的 PR #${a.open_prs > 0 ? '' : ''}？合并后平台将自动同步，应用保持「测试」状态，确认后再手动启用。`,
+    `合并「${a.name}」的 PR #${a.open_pr_number ?? '?'}？合并后平台将自动同步，应用保持「测试」状态，确认后再手动启用。`,
     '合并 PR',
     { type: 'warning', confirmButtonText: '合并', cancelButtonText: '取消' }
   );
