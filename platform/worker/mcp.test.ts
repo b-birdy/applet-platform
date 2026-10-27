@@ -401,6 +401,26 @@ describe('submit flow (approved agent)', () => {
   });
 });
 
+describe('logs endpoint actor-name join', () => {
+  it('resolves user username and agent name for audit rows', async () => {
+    // beforeEach 清 agent.% 审计——本用例自己产生一条 agent 审计（用 access_code apply）
+    const code = await makeAccessCode();
+    await callTool('agent_apply', { name: 'log-agent', fingerprint: 'fp-log' }, code);
+    const r = await SELF.fetch('https://x/api/admin/logs?limit=50', { headers: { cookie: adminCookie } });
+    expect(r.status).toBe(200);
+    const { logs } = await r.json() as any;
+    // user 类型行应有 user_name=admin
+    const userRow = logs.find((l: any) => l.actor_type === 'user' && l.user_name);
+    expect(userRow).toBeDefined();
+    expect(userRow.user_name).toBe('boss11'); // 该测试文件的 admin seed 名
+    // agent 行应有 join 出的认证名称（agent_apply 的 actor_id=agent id）
+    const agentRow = logs.find((l: any) => l.actor_type === 'agent' && l.action === 'agent.apply');
+    expect(agentRow).toBeDefined();
+    expect(agentRow.agent_name).toBe('log-agent');
+    expect(agentRow.agent_fingerprint).toBe('fp-log');
+  });
+});
+
 describe('tools', () => {
   let toolerKey: string;
   beforeAll(async () => {

@@ -3,7 +3,11 @@
 import { ref, onMounted } from 'vue';
 import { api } from '../../api/client';
 
-type Log = { id: number; actor_type: string; actor_id: string | null; action: string; target: string | null; detail: string | null; at: string };
+type Log = {
+  id: number; actor_type: string; actor_id: string | null; action: string;
+  target: string | null; detail: string | null; at: string;
+  user_name: string | null; agent_name: string | null; agent_fingerprint: string | null;
+};
 
 const logs = ref<Log[]>([]);
 const actor = ref('');
@@ -52,14 +56,17 @@ const ACTION_ZH: Record<string, string> = {
   'agent.code_created': '生成准入码',
   'agent.submit': 'Agent 提交小程序',
   'my.purge': '用户清除自己的数据',
+  'agent.import_data': 'Agent 导入数据',
 };
 
-// agent 操作人显示为「agent名 (指纹前6位)」；user 显示用户名——需要名字映射由后端 join 提供，
-// 这里对 actor_id 做最小处理：数字 ID 的 user 显示「用户 #id」（后端已尽可能 join 用户名）。
-function actorLabel(row: any): string {
-  if (row.actor_type === 'agent') return `Agent #${row.actor_id}`;
+// 操作人显示：user → 用户名（如「用户: admin」），agent → 认证名称（如「Agent: WorkBuddy 智能体（词汇整理）」）
+// 后端已 join 名字；名字缺失（用户已删等）回退到 ID
+function actorLabel(row: Log): string {
+  if (row.actor_type === 'agent') {
+    return row.agent_name ? `Agent: ${row.agent_name}` : `Agent #${row.actor_id}`;
+  }
   if (row.actor_type === 'system') return '系统';
-  return row.actor_id?.startsWith('#') ? row.actor_id : `用户 ${row.actor_id}`;
+  return row.user_name ? `用户: ${row.user_name}` : `用户 #${row.actor_id}`;
 }
 
 function fmtDetail(d: string | null): string {

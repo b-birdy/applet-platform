@@ -213,13 +213,21 @@ mcpAdminRoutes.get('/api/admin/logs', async (c) => {
   const actor = c.req.query('actor');
   const action = c.req.query('action');
   const limit = Math.min(Number(c.req.query('limit') || 100), 500);
-  let sql = `SELECT id, actor_type, actor_id, action, target, detail, at FROM t_audit_logs`;
+  // actor 名字解析：user → username，agent → 认证名称（前端直接显示）
+  let sql = `SELECT al.id, al.actor_type, al.actor_id, al.action, al.target, al.detail, al.at,
+       u.username AS user_name, ag.name AS agent_name, ag.fingerprint AS agent_fingerprint
+     FROM t_audit_logs al
+     LEFT JOIN t_users u ON al.actor_type = 'user' AND u.id = CAST(al.actor_id AS INTEGER)
+     LEFT JOIN t_agents ag ON al.actor_type = 'agent' AND ag.id = CAST(al.actor_id AS INTEGER)`;
   const conds: string[] = [];
   const binds: any[] = [];
-  if (actor) { conds.push(`(actor_id LIKE ? OR actor_type = ?)`); binds.push(`%${actor}%`, actor); }
-  if (action) { conds.push(`action LIKE ?`); binds.push(`%${action}%`); }
+  if (actor) {
+    conds.push(`(u.username LIKE ? OR ag.name LIKE ? OR al.actor_id LIKE ? OR al.actor_type = ?)`);
+    binds.push(`%${actor}%`, `%${actor}%`, `%${actor}%`, actor);
+  }
+  if (action) { conds.push(`al.action LIKE ?`); binds.push(`%${action}%`); }
   if (conds.length) sql += ` WHERE ${conds.join(' AND ')}`;
-  sql += ` ORDER BY id DESC LIMIT ?`;
+  sql += ` ORDER BY al.id DESC LIMIT ?`;
   binds.push(limit);
   const rows = (await c.env.DB.prepare(sql).bind(...binds).all() as any).results;
   return c.json({ logs: rows });
