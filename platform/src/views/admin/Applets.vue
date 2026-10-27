@@ -5,6 +5,7 @@ import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { api, ApiError } from '../../api/client';
 import AppletWizard from './AppletWizard.vue';
+import IconPicker from '../../components/IconPicker.vue';
 
 type Applet = {
   id: number; name: string; path: string; icon: string | null; status: string;
@@ -269,7 +270,8 @@ function onWizardCreated() {
       <el-table-column label="应用" min-width="200">
         <template #default="{ row }">
           <div class="appname">
-            <span class="ic">{{ row.icon || '▣' }}</span>
+            <img v-if="row.icon && row.icon.startsWith('data:image')" class="ic img" :src="row.icon" alt="">
+            <span v-else class="ic">{{ row.icon || '▣' }}</span>
             <div>
               <b>
                 {{ row.name }}
@@ -372,7 +374,7 @@ function onWizardCreated() {
           <el-input v-model="editForm.name" />
         </el-form-item>
         <el-form-item label="图标">
-          <el-input v-model="editForm.icon" placeholder="emoji，如 📚" style="width: 160px" />
+          <IconPicker v-model="editForm.icon" />
         </el-form-item>
         <el-form-item label="展示方式">
           <el-radio-group v-model="editForm.display">
@@ -458,6 +460,7 @@ function onWizardCreated() {
 h1 { font-size: 17px; margin: 0; }
 .appname { display: flex; align-items: center; gap: 9px; }
 .appname .ic { width: 28px; height: 28px; border-radius: 7px; background: var(--accent-weak); color: var(--accent); display: flex; align-items: center; justify-content: center; font-size: 15px; }
+.appname .ic.img { object-fit: cover; background: var(--surface-2); }
 .appname .path { font-size: 11px; color: var(--ink-3); font-family: ui-monospace, monospace; }
 .muted { color: var(--ink-3); }
 .row-testing td { background: color-mix(in srgb, var(--warn) 8%, transparent) !important; }

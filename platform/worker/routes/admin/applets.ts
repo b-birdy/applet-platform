@@ -60,6 +60,7 @@ adminAppletRoutes.put('/api/admin/applets/:id', async (c) => {
   if (!body) return c.json({ error: 'BAD_REQUEST' }, 400);
   if (body.display !== undefined && !['embed', 'new_tab'].includes(body.display)) return c.json({ error: 'BAD_DISPLAY' }, 400);
 
+  if (body.icon !== undefined && body.icon.length > 100_000) return c.json({ error: 'ICON_TOO_LARGE' }, 400);
   if (body.name !== undefined) await c.env.DB.prepare(`UPDATE t_applets SET name = ? WHERE id = ?`).bind(body.name, applet.id).run();
   if (body.icon !== undefined) await c.env.DB.prepare(`UPDATE t_applets SET icon = ? WHERE id = ?`).bind(body.icon, applet.id).run();
   if (body.display !== undefined) await c.env.DB.prepare(`UPDATE t_applets SET display = ? WHERE id = ?`).bind(body.display, applet.id).run();

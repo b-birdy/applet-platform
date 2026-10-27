@@ -4,6 +4,7 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import { ElMessage } from 'element-plus';
 import { devPrompt, checkPrompt, uploadPrompt, existingAppletPrompt } from '../../data/prompts';
 import { api } from '../../api/client';
+import IconPicker from '../../components/IconPicker.vue';
 
 // 向导打开时自动生成一次性准入码（24h），直接内嵌进提示词，省一轮「向管理员要码」的对话
 const accessCode = ref('');
@@ -96,7 +97,7 @@ function startPolling() {
           <el-input v-model="form.name" placeholder="背单词" />
         </el-form-item>
         <el-form-item label="图标">
-          <el-input v-model="form.icon" placeholder="📚（emoji，可选）" style="width: 200px" />
+          <IconPicker v-model="form.icon" />
         </el-form-item>
       </el-form>
       <p class="hint">ID 即小程序在仓库中的目录名（applets/&lt;ID&gt;/），创建后不可更改。</p>

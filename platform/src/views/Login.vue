@@ -84,7 +84,7 @@ input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-we
 .err { color: var(--danger); font-size: 12px; margin: 0 0 10px; }
 .btn {
   width: 100%; height: 38px; border-radius: 8px; border: none;
-  background: linear-gradient(135deg, var(--accent), var(--accent-hover)); color: #fff;
+  background: var(--accent-grad); color: #fff;
   font: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
   transition: filter .12s ease, transform .12s ease; box-shadow: var(--shadow-sm);
 }

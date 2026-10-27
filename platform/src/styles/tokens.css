@@ -23,10 +23,15 @@
   --shadow-lg: 0 4px 8px rgba(28, 36, 34, .06), 0 16px 40px -12px rgba(28, 36, 34, .16);
   --accent-hover: #12605A;
   --accent-soft: #F0F7F6;
+  /* 工板 2.0：渐变（仅用于可交互元素）+ agent 语义色（琥珀=机器操作） */
+  --accent-grad: linear-gradient(135deg, #176E68, #1F8F84);
+  --agent: #B9791F;
+  --agent-weak: #F7EEDD;
+  --surface-2: #FBFCFB;
 }
 
 html.dark {
-  --canvas: #121816;
+  --canvas: #0F1513;
   --panel: #1A211F;
   --ink: #E6EBE9;
   --ink-2: #A8B2AF;
@@ -37,6 +42,10 @@ html.dark {
   --accent-weak: #1D3A37;
   --accent-hover: #3BB5AC;
   --accent-soft: #16211F;
+  --accent-grad: linear-gradient(135deg, #2FA39A, #23857D);
+  --agent: #D29A45;
+  --agent-weak: #2A2313;
+  --surface-2: #161D1A;
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, .2), 0 1px 3px rgba(0, 0, 0, .25);
   --shadow-md: 0 2px 4px rgba(0, 0, 0, .25), 0 8px 24px -8px rgba(0, 0, 0, .4);
   --shadow-lg: 0 4px 8px rgba(0, 0, 0, .3), 0 16px 40px -12px rgba(0, 0, 0, .5);

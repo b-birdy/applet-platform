@@ -87,6 +87,7 @@ async function logout() {
 }
 .side.collapsed { width: 48px; padding: 14px 6px; }
 .wordmark { padding: 4px 8px 16px; cursor: pointer; border-bottom: 1px solid var(--line); margin-bottom: 8px; }
+.wordmark .glyph { background: var(--accent-grad); box-shadow: 0 2px 6px -2px color-mix(in srgb, var(--accent) 50%, transparent); }
 nav { flex: 1; display: flex; flex-direction: column; gap: 2px; }
 .sec { font-size: 11px; color: var(--ink-3); padding: 10px 8px 4px; }
 .nav {
@@ -97,6 +98,7 @@ nav { flex: 1; display: flex; flex-direction: column; gap: 2px; }
 .nav { transition: background .12s ease, color .12s ease; }
 .nav:hover { background: var(--accent-soft); color: var(--ink); }
 .nav.on { background: linear-gradient(135deg, var(--accent-weak), color-mix(in srgb, var(--accent) 16%, var(--panel))); color: var(--accent); font-weight: 600; box-shadow: inset 2.5px 0 0 var(--accent); border-radius: 6px 10px 10px 6px; }
+.side { background: linear-gradient(180deg, var(--surface-2), var(--panel) 120px); }
 .ico { width: 16px; text-align: center; flex: none; }
 .foot { border-top: 1px solid var(--line); padding-top: 8px; display: flex; flex-direction: column; gap: 2px; }
 .as-btn { width: 100%; }

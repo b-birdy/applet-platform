@@ -21,6 +21,15 @@ body {
 /* 卡片基线：统一浮起层次 */
 .el-card, .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-md); box-shadow: var(--shadow-sm); }
 
+/* agent 语义灯（琥珀=机器操作，苍青=人的操作） */
+.st.agent { color: var(--agent); }
+.st.agent i { background: var(--agent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--agent) 18%, transparent); }
+.agent-tag {
+  display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600;
+  color: var(--agent); background: var(--agent-weak); border-radius: 999px; padding: 1px 8px;
+}
+.agent-tag::before { content: "◆"; font-size: 8px; }
+
 /* 字标 */
 .wordmark { display: flex; align-items: center; gap: 9px; }
 .wordmark .glyph { width: 26px; height: 26px; border-radius: 7px; background: var(--accent); position: relative; flex: none; }
