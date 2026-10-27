@@ -91,22 +91,22 @@ function fmtDetail(d: string | null): string {
 
     <el-table v-loading="loading" :data="logs" stripe>
       <el-table-column prop="id" label="ID" width="70" />
-      <el-table-column prop="at" label="时间" width="170" />
-      <el-table-column label="操作人" width="150">
+      <el-table-column prop="at" label="时间" width="165" />
+      <el-table-column label="操作人" min-width="200">
         <template #default="{ row }">
           <span v-if="row.actor_type === 'agent'" class="agent-tag">{{ actorLabel(row) }}</span>
-          <span v-else>{{ actorLabel(row) }}</span>
+          <span v-else class="actor">{{ actorLabel(row) }}</span>
         </template>
       </el-table-column>
-      <el-table-column label="动作" min-width="160">
+      <el-table-column label="动作" width="170">
         <template #default="{ row }">
           <el-tooltip :content="row.action" placement="top">
             <span class="action-zh">{{ ACTION_ZH[row.action] ?? row.action }}</span>
           </el-tooltip>
         </template>
       </el-table-column>
-      <el-table-column prop="target" label="对象" min-width="120" />
-      <el-table-column label="详情" min-width="220">
+      <el-table-column prop="target" label="对象" width="140" />
+      <el-table-column label="详情" min-width="240">
         <template #default="{ row }">
           <span class="detail">{{ fmtDetail(row.detail) }}</span>
         </template>
@@ -121,4 +121,6 @@ h1 { font-size: 17px; margin: 0; }
 .ops { display: flex; gap: 8px; }
 .detail { font-size: 12px; color: var(--ink-3); font-family: ui-monospace, monospace; word-break: break-all; }
 .action-zh { cursor: help; border-bottom: 1px dashed var(--line-strong); }
+.actor { white-space: nowrap; }
+.agent-tag { white-space: nowrap; max-width: none; }
 </style>
