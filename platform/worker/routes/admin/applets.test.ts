@@ -167,6 +167,33 @@ describe('applet history endpoint (log management module)', () => {
   });
 });
 
+describe('applet health check endpoint (functional test module)', () => {
+  it('requires admin', async () => {
+    const r = await SELF.fetch('https://x/api/admin/applets/any/health');
+    expect([401, 403]).toContain(r.status);
+  });
+
+  it('returns three-area checks with data-layer validation', async () => {
+    const login = await SELF.fetch('https://x/api/auth/login', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ username: 'boss7', password: 'pw-123456' }),
+    });
+    const cookie = login.headers.get('set-cookie')!.split(';')[0];
+    const r = await SELF.fetch('https://x/api/admin/applets/demo7/health', { headers: { cookie } });
+    expect(r.status).toBe(200);
+    const json: any = await r.json();
+    expect(json).toHaveProperty('ok');
+    expect(json.checks.length).toBeGreaterThan(0);
+    const areas = new Set(json.checks.map((c: any) => c.area));
+    expect(areas.has('静态规范')).toBe(true);
+    expect(areas.has('运行时')).toBe(true);
+    expect(areas.has('数据层')).toBe(true);
+    // demo7 注册过 t1 表——数据层应有对应物理表检查
+    expect(json.checks.some((c: any) => c.name.includes('a_demo7_t1'))).toBe(true);
+  });
+});
+
 describe('admin settings/logs/sync require auth (final deploy hotfix)', () => {
   it.each([
     '/api/admin/settings',

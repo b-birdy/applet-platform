@@ -188,6 +188,73 @@ adminAppletRoutes.delete('/api/admin/applets/:id', async (c) => {
   return c.json({ ok: true });
 });
 
+// 功能健康检查（功能性测试模块的自动化部分）：
+// ① 静态规范 ② 运行时引用完整性（自包含 HTML 是否有外链残留/资源缺失）
+// ③ 数据层健康（清单表 ↔ 物理表一致、平台列存在）
+adminAppletRoutes.get('/api/admin/applets/:id/health', async (c) => {
+  const slug = c.req.param('id');
+  const applet = await c.env.DB.prepare(`SELECT id, path, entry, status FROM t_applets WHERE path = ?`).bind(slug).first<{ id: number; path: string; entry: string | null; status: string }>();
+  if (!applet) return c.json({ error: 'NOT_FOUND' }, 404);
+
+  const checks: { area: string; name: string; ok: boolean; message: string }[] = [];
+
+  // ① 静态规范（checker 对 R2 现有文件）
+  const prefix = `prod/${slug}/`;
+  const list = await c.env.ASSETS.list({ prefix });
+  const files = new Map<string, string>();
+  for (const obj of list.objects) {
+    if (!obj.key.startsWith(prefix)) continue;
+    if (obj.size > 5 * 1024 * 1024) continue;
+    const body = await c.env.ASSETS.get(obj.key);
+    if (body) files.set(obj.key.slice(prefix.length), await body.text());
+  }
+  const { checkApplet } = await import('../../checker');
+  const issues = checkApplet(slug, files);
+  checks.push({
+    area: '静态规范', name: 'checker 全量规则',
+    ok: !issues.some((i) => i.level === 'error'),
+    message: issues.length ? issues.map((i) => `[${i.level}] ${i.rule} ${i.file}: ${i.message}`).join('\n') : '全部通过',
+  });
+
+  // ② 运行时完整性：入口 HTML 存在、无外链 CSS/JS 残留（自包含化成功）、运行时已内联
+  const entry = applet.entry ?? 'index.html';
+  const entryHtml = files.get(entry);
+  if (!entryHtml) {
+    checks.push({ area: '运行时', name: '入口文件', ok: false, message: `入口 ${entry} 在 R2 中不存在（可能未合并 PR 或同步失败）` });
+  } else {
+    const externalLinks = [...entryHtml.matchAll(/<(?:link[^>]*stylesheet|script[^>]*src=)[^>]*>/gi)]
+      .filter((m) => !/app-runtime/.test(m[0]) && !/https?:\/\//.test(m[0]))
+      .map((m) => m[0].slice(0, 80));
+    checks.push({ area: '运行时', name: '外链资源残留（自包含化）', ok: externalLinks.length === 0, message: externalLinks.length ? `仍有外链引用：${externalLinks.join('; ')}` : '无外链，自包含完整' });
+    checks.push({ area: '运行时', name: '平台运行时已内联', ok: entryHtml.includes('data-applet-runtime'), message: entryHtml.includes('data-applet-runtime') ? '已内联' : '未发现运行时标记——请确认入口引入了 /app-runtime.js 并已重新提交' });
+    checks.push({ area: '运行时', name: '主题变量已注入', ok: entryHtml.includes('data-platform-theme'), message: entryHtml.includes('data-platform-theme') ? '已注入' : '未注入（旧版本缓存或伺服异常）' });
+  }
+
+  // ③ 数据层：清单声明的表 vs 物理表
+  const snapRow = await c.env.DB.prepare(`SELECT value FROM t_settings WHERE key = ?`).bind(`manifest.${slug}`).first<{ value: string }>();
+  if (!snapRow?.value) {
+    checks.push({ area: '数据层', name: '清单快照', ok: false, message: 'manifest 快照缺失——数据 API 将不可用（TABLE_NOT_FOUND）' });
+  } else {
+    const declared = Object.keys(JSON.parse(snapRow.value));
+    for (const t of declared) {
+      const physical = `a_${slug.replace(/[^a-zA-Z0-9]+/g, '_')}_${t}`;
+      const exists = await c.env.DB.prepare(`SELECT name FROM sqlite_master WHERE name = ?`).bind(physical).first();
+      checks.push({ area: '数据层', name: `物理表 ${physical}`, ok: !!exists, message: exists ? '存在' : '清单已声明但物理表不存在——重新触发同步可修复' });
+    }
+    // 反向：孤儿物理表
+    const declaredPhysical = new Set(declared.map((t) => `a_${slug.replace(/[^a-zA-Z0-9]+/g, '_')}_${t}`));
+    const allTables = (await c.env.DB.prepare(`SELECT name FROM sqlite_master WHERE name LIKE ?`).bind(`a_${slug.replace(/[^a-zA-Z0-9]+/g, '_')}_%`).all<{ name: string }>()).results;
+    for (const t of allTables) {
+      if (!declaredPhysical.has(t.name)) {
+        checks.push({ area: '数据层', name: `孤儿表 ${t.name}`, ok: false, message: '物理表存在但清单未声明（历史残留）' });
+      }
+    }
+  }
+
+  const allOk = checks.every((c2) => c2.ok);
+  return c.json({ ok: allOk, status: applet.status, checks });
+});
+
 // 小程序历史时间线（日志管理模块）：该 applet 的审计事件 + PR 状态变化 + agent 归属，按时间倒序
 adminAppletRoutes.get('/api/admin/applets/:id/history', async (c) => {
   const slug = c.req.param('id');

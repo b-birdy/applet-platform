@@ -109,6 +109,33 @@ async function submitAuthorize() {
   }
 }
 
+// 授权 Agent 快捷入口（从 Applets 行直接授权，复用 grant API）
+const agentGrantVisible = ref(false);
+const agentGrantTarget = ref<Applet | null>(null);
+const agentList = ref<{ id: number; name: string; status: string }[]>([]);
+const agentGrantId = ref<number | null>(null);
+
+async function openAgentGrant(a: Applet) {
+  agentGrantTarget.value = a;
+  agentGrantId.value = null;
+  try {
+    const res = await api<{ agents: { id: number; name: string; status: string }[] }>('/api/admin/agents');
+    agentList.value = res.agents.filter((x) => x.status === 'approved');
+  } catch { agentList.value = []; }
+  agentGrantVisible.value = true;
+}
+
+async function submitAgentGrant() {
+  try {
+    await api(`/api/admin/agents/${agentGrantId.value}/grant`, { method: 'POST', body: { appletId: agentGrantTarget.value!.path } });
+    ElMessage.success('已授权该 agent 操作此小程序');
+    agentGrantVisible.value = false;
+    await load();
+  } catch (e) {
+    ElMessage.error(e instanceof ApiError ? (e.code === 'APPLET_NOT_FOUND' ? '小程序不存在' : e.code) : '授权失败');
+  }
+}
+
 // 编辑对话框（改进 8）：名称/图标/展示方式/专属配额
 const editVisible = ref(false);
 const editTarget = ref<Applet | null>(null);
@@ -141,15 +168,50 @@ async function submitEdit() {
   }
 }
 
+const healthChecks = ref<{ area: string; name: string; ok: boolean; message: string }[] | null>(null);
+const healthOk = ref(true);
+
 async function checkReport(a: Applet) {
   reportTarget.value = a.path;
+  healthChecks.value = null;
   try {
     const res = await api<{ issues: typeof reportIssues.value }>(`/api/admin/applets/${a.path}/check-report`);
     reportIssues.value = res.issues;
   } catch {
     reportIssues.value = [];
   }
+  // 健康检查（功能测试模块）：静态规范 + 运行时完整性 + 数据层
+  try {
+    const h = await api<{ ok: boolean; checks: typeof healthChecks.value }>(`/api/admin/applets/${a.path}/health`);
+    healthChecks.value = h.checks;
+    healthOk.value = h.ok;
+  } catch {
+    healthChecks.value = null;
+  }
   reportVisible.value = true;
+}
+
+// 复制给 agent 的完整健康报告（含修复提示词引导）
+function copyHealth() {
+  const lines: string[] = [];
+  if (healthChecks.value) {
+    lines.push('【平台健康检查报告】');
+    for (const c of healthChecks.value) {
+      lines.push(`[${c.ok ? 'PASS' : 'FAIL'}] ${c.area} / ${c.name}: ${c.message}`);
+    }
+    if (!healthOk.value) {
+      lines.push('');
+      lines.push('请根据以上 FAIL 项修复小程序（保持 applet.json 清单与代码一致），');
+      lines.push('然后调用 check_applet 自检清零并重新 submit_applet 提交（同分支自动更新 PR）。');
+    }
+  }
+  if (reportIssues.value.length) {
+    lines.push('');
+    lines.push('【静态规范问题】');
+    lines.push(...reportIssues.value.map((i) => `[${i.level}] ${i.rule} ${i.file}: ${i.message}`));
+  }
+  navigator.clipboard.writeText(lines.join('\n') || '全部通过');
+  ElMessage.success('健康报告已复制，可粘贴给 agent');
 }
 
 function copyReport() {
@@ -249,6 +311,9 @@ function onWizardCreated() {
           <el-tooltip content="选择哪些用户可以使用该小程序" placement="top">
             <el-button size="small" @click="openAuthorizeDialog(row)">授权</el-button>
           </el-tooltip>
+          <el-tooltip content="批准某个 agent 操作（修改）此小程序" placement="top">
+            <el-button size="small" @click="openAgentGrant(row)">授权 Agent</el-button>
+          </el-tooltip>
           <el-tooltip content="名称/图标/展示方式/本应用专属配额" placement="top">
             <el-button size="small" @click="openEdit(row)">编辑</el-button>
           </el-tooltip>
@@ -256,7 +321,9 @@ function onWizardCreated() {
             <el-button size="small" @click="openHistory(row)">历史</el-button>
           </el-tooltip>
           <el-button v-if="row.open_prs" size="small" type="primary" @click="mergePR(row)">合并 PR</el-button>
-          <el-button size="small" @click="checkReport(row)">检查报告</el-button>
+          <el-tooltip content="静态规范 + 运行时完整性 + 数据层健康的综合检查，报告可复制给 agent" placement="top">
+            <el-button size="small" @click="checkReport(row)">健康报告</el-button>
+          </el-tooltip>
           <el-button size="small" type="danger" plain @click="remove(row)">删除</el-button>
         </template>
       </el-table-column>
@@ -282,6 +349,19 @@ function onWizardCreated() {
       <template #footer>
         <el-button @click="authDialog = false">取消</el-button>
         <el-button type="primary" :disabled="selected.length === 0" @click="submitAuthorize">应用授权</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 授权 Agent 对话框 -->
+    <el-dialog v-model="agentGrantVisible" :title="`授权 Agent — ${agentGrantTarget?.name}`" width="440px">
+      <p class="hint">选择一个已批准的 agent，允许它对本小程序提交修改（PR）：</p>
+      <el-select v-model="agentGrantId" filterable placeholder="选择 agent" style="width: 100%">
+        <el-option v-for="a in agentList" :key="a.id" :label="a.name" :value="a.id" />
+      </el-select>
+      <p class="hint" style="margin-top: 8px">没有目标 agent？先到「Agent 认证」页审批接入。</p>
+      <template #footer>
+        <el-button @click="agentGrantVisible = false">取消</el-button>
+        <el-button type="primary" :disabled="!agentGrantId" @click="submitAgentGrant">授权</el-button>
       </template>
     </el-dialog>
 
@@ -350,15 +430,25 @@ function onWizardCreated() {
     </el-drawer>
 
     <!-- 检查报告抽屉 -->
-    <el-drawer v-model="reportVisible" :title="`检查报告 — ${reportTarget}`" size="480px">
-      <el-empty v-if="reportIssues.length === 0" description="无问题（全部通过）" />
+    <el-drawer v-model="reportVisible" :title="`健康报告 — ${reportTarget}`" size="520px">
+      <template v-if="healthChecks">
+        <h3 class="rep-h">功能健康检查（{{ healthOk ? '全部通过' : '存在 FAIL 项' }}）</h3>
+        <ul class="issues">
+          <li v-for="(c, idx) in healthChecks" :key="'h' + idx" :class="c.ok ? 'pass' : 'error'">
+            <b>{{ c.area }} / {{ c.name }}</b>
+            <span>{{ c.message }}</span>
+          </li>
+        </ul>
+      </template>
+      <h3 class="rep-h">静态规范问题（{{ reportIssues.length }}）</h3>
+      <el-empty v-if="reportIssues.length === 0" description="无问题（全部通过）" :image-size="50" />
       <ul v-else class="issues">
         <li v-for="(i, idx) in reportIssues" :key="idx" :class="i.level">
           <b>[{{ i.level }}] {{ i.rule }}</b>
           <span>{{ i.file }}: {{ i.message }}</span>
         </li>
       </ul>
-      <el-button style="margin-top: 12px" @click="copyReport">复制问题清单</el-button>
+      <el-button style="margin-top: 12px" @click="copyHealth">复制完整报告（给 agent）</el-button>
     </el-drawer>
   </div>
 </template>
@@ -384,4 +474,6 @@ h1 { font-size: 17px; margin: 0; }
 .issues li { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; margin-bottom: 8px; font-size: 13px; }
 .issues li.error { border-color: var(--danger); }
 .issues li.warn { border-color: var(--warn); }
+.issues li.pass { border-color: var(--ok); }
+.rep-h { font-size: 13px; margin: 12px 0 8px; }
 </style>
