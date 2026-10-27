@@ -280,7 +280,15 @@ adminAppletRoutes.get('/api/admin/applets/:id/health', async (c) => {
     const allTables = (await c.env.DB.prepare(`SELECT name FROM sqlite_master WHERE name LIKE ?`).bind(`a_${slug.replace(/[^a-zA-Z0-9]+/g, '_')}_%`).all<{ name: string }>()).results;
     for (const t of allTables) {
       if (!declaredPhysical.has(t.name)) {
-        checks.push({ area: '数据层', name: `孤儿表 ${t.name}`, ok: false, message: '物理表存在但清单未声明（历史残留）' });
+        // ?fix=1：直接 DROP 孤儿表（运维参数，幂等；孤儿表不属于任何已声明清单）
+        if (c.req.query('fix') === '1') {
+          await c.env.DB.prepare(`DROP TABLE IF EXISTS "${t.name}"`).run();
+          checks.push({ area: '数据层', name: `孤儿表 ${t.name}`, ok: true, message: '已清理（fix=1 执行 DROP）' });
+          const auth = c.get('auth');
+          await logAudit(c.env.DB, { actor_type: 'user', actor_id: String(auth.userId), action: 'applet.health_fix', target: slug, detail: { dropped: t.name } });
+        } else {
+          checks.push({ area: '数据层', name: `孤儿表 ${t.name}`, ok: false, message: '物理表存在但清单未声明（历史残留）——health?fix=1 可自动清理' });
+        }
       }
     }
   }
