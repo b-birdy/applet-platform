@@ -6,6 +6,7 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import { api, ApiError } from '../../api/client';
 import AppletWizard from './AppletWizard.vue';
 import IconPicker from '../../components/IconPicker.vue';
+import { adoptPrompt } from '../../data/prompts';
 
 type Applet = {
   id: number; name: string; path: string; icon: string | null; status: string;
@@ -257,7 +258,30 @@ function handleRowCmd(row: Applet, cmd: string) {
   if (cmd.startsWith('status:')) { changeStatus(row, cmd.slice(7)); return; }
   if (cmd === 'authorize-user') { openAuthorizeDialog(row); return; }
   if (cmd === 'authorize-agent') { openAgentGrant(row); return; }
+  if (cmd === 'adopt-agent') { openAdoptAgent(row); return; }
   if (cmd === 'delete') { remove(row); return; }
+}
+
+// 新 Agent 接管已有小程序：自动生成准入码，内嵌完整提示词（申请→授权→修改→提交）
+const adoptVisible = ref(false);
+const adoptTarget = ref<Applet | null>(null);
+const adoptCode = ref('');
+const adoptPromptText = ref('');
+const mcpUrl = `${window.location.origin}/mcp`;
+async function openAdoptAgent(a: Applet) {
+  adoptTarget.value = a;
+  adoptCode.value = '';
+  adoptVisible.value = true;
+  adoptPromptText.value = adoptPrompt({ id: a.path, name: a.name }, mcpUrl);
+  try {
+    const code = await api<{ code: string }>('/api/admin/access-codes', { method: 'POST', body: {} });
+    adoptCode.value = code.code;
+    adoptPromptText.value = adoptPrompt({ id: a.path, name: a.name }, mcpUrl, code.code);
+  } catch { /* 准入码生成失败不阻断——提示词走索取文案 */ }
+}
+async function copyAdopt() {
+  await navigator.clipboard.writeText(adoptPromptText.value);
+  ElMessage.success('已复制到剪贴板');
 }
 
 function onWizardCreated() {
@@ -329,6 +353,7 @@ function onWizardCreated() {
                   </el-dropdown-item>
                   <el-dropdown-item v-if="TRANSITIONS[row.status]?.length" divided command="authorize-user">授权用户…</el-dropdown-item>
                   <el-dropdown-item command="authorize-agent">授权 Agent…</el-dropdown-item>
+                  <el-dropdown-item command="adopt-agent">新 Agent 接管…</el-dropdown-item>
                   <el-dropdown-item command="delete" divided>删除小程序…</el-dropdown-item>
                 </el-dropdown-menu>
               </template>
@@ -406,6 +431,20 @@ function onWizardCreated() {
       <template #footer>
         <el-button @click="editVisible = false">取消</el-button>
         <el-button type="primary" @click="submitEdit">保存</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 新 Agent 接管：准入码 + 完整提示词 -->
+    <el-dialog v-model="adoptVisible" :title="`新 Agent 接管 — ${adoptTarget?.name}`" width="640px">
+      <p class="hint" style="margin: 0 0 10px">
+        把下面的提示词复制给新的 agent。它先凭提示词内嵌的准入码申请接入，你审批后
+        <b>记得在「授权 Agent…」里把本小程序的编辑权授给它</b>（提示词中也已告知它这一点）。
+      </p>
+      <div class="prompt-card">
+        <pre>{{ adoptPromptText }}</pre>
+      </div>
+      <template #footer>
+        <el-button type="primary" @click="copyAdopt">复制提示词</el-button>
       </template>
     </el-dialog>
 
@@ -488,4 +527,6 @@ h1 { font-size: 17px; margin: 0; }
 .issues li.warn { border-color: var(--warn); }
 .issues li.pass { border-color: var(--ok); }
 .rep-h { font-size: 13px; margin: 12px 0 8px; }
+.prompt-card { background: var(--canvas); border: 1px solid var(--line); border-radius: 8px; padding: 12px; max-height: 380px; overflow: auto; }
+.prompt-card pre { margin: 0; white-space: pre-wrap; font-size: 12.5px; line-height: 1.7; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 </style>

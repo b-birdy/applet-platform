@@ -96,3 +96,32 @@ export function uploadPrompt(a: AppletMeta, mcpUrl: string): string {
 
 注意：若 submit_applet 返回 issues（含 error），回到检查环节修正后重新提交；若返回 AGENT_SCOPE，说明该小程序归属其他 agent，停止操作并报告管理员。`;
 }
+
+// 新 Agent 接管已有小程序（管理员在小程序管理「更多」里生成，准入码自动内嵌）
+export function adoptPrompt(a: AppletMeta, mcpUrl: string, accessCode?: string): string {
+  const codeLine = accessCode
+    ? `一次性准入码（24 小时内有效）：${accessCode}`
+    : `一次性准入码向管理员索取`;
+  return `请你接手维护平台上的已有小程序「${a.name}」（id: ${a.id}），后续负责它的功能迭代与修复。
+
+【准备 · 申请接入】
+连接平台 MCP 服务（Streamable HTTP）：${mcpUrl}
+${codeLine}。用该准入码调用 agent_apply 申请接入（name 填你的名字，fingerprint 填你的唯一标识），等管理员审批拿到 API Key 后继续。管理员审批通过后，会把本小程序的编辑权授予你。
+
+【第一步 · 了解现状】
+1. 调用工具 get_spec（不传参数获取全部章节），逐条阅读 structure / manifest / data / security / upload 五节规范；
+2. 从 GitHub 仓库拉取现有代码：applets/${a.id}/ 目录下是全部文件（清单 applet.json + 入口 HTML + 脚本 + 样式），通读理解当前实现；
+3. 调用 get_status({ applet_id: "${a.id}" }) 确认归属与状态。
+
+【第二步 · 修改】
+按管理员的任务要求修改代码：
+${RULES}
+· 修改数据表结构时只允许加列（ALTER ADD COLUMN），破坏性变更需要先与管理员沟通；
+· 提交的文件集始终包含 ${a.id}/ 目录的全部文件（未改动的文件也要带上）。
+
+【第三步 · 自检并提交】
+调用 check_applet({ applet_id: "${a.id}", files }) 自检，把所有 error 级问题修正至清零；然后调用 submit_applet 提交，平台自动建 PR，把返回的 pr_number 报告给管理员审阅合并。
+
+【提交后】
+调用 get_status 确认 PR 为 open 且 check_report 无 error；管理员合并后平台自动同步上线。`;
+}
