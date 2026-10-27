@@ -3,6 +3,9 @@
 (function () {
   var state = { token: null, ready: false };
 
+  // 数据 API 是 /api/data/<appletId>/<table>——appletId 从自身地址（/app/<id>/…）解析
+  var appletId = (location.pathname.match(/^\/(?:app|preview)\/([^/]+)/) || [])[1] || '';
+
   function headers() {
     return {
       'content-type': 'application/json',
@@ -11,7 +14,7 @@
   }
 
   function request(method, path, body) {
-    return fetch('/api/data/' + path, {
+    return fetch('/api/data/' + appletId + '/' + path, {
       method: method,
       headers: headers(),
       body: body === undefined ? undefined : JSON.stringify(body),

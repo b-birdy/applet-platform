@@ -114,6 +114,8 @@ describe('applet static serving', () => {
     // 运行时已内联（不再有 /app-runtime.js 外链）
     expect(html).toContain('data-applet-runtime');
     expect(html).not.toMatch(/<script\s+src=["']\/app-runtime\.js["']/);
+    // 回归：运行时必须从自身地址解析 appletId 拼进数据 URL（漏拼 → 沙箱内所有数据请求 404）
+    expect(html).toMatch(/api\/data\/'\s*\+\s*appletId\s*\+\s*'\/'/);
     // CSP 不再含主机源（沙箱 origin=null 匹配不了），只允许内联
     const csp = r.headers.get('content-security-policy') ?? '';
     expect(csp).toContain("script-src 'unsafe-inline'");
