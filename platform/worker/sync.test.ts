@@ -102,6 +102,28 @@ describe('syncOnce', () => {
     const still = await env.DB.prepare(`SELECT COUNT(*) AS n FROM t_applets WHERE path='syncapp'`).first<any>();
     expect(still.n).toBe(1);
   });
+
+  it('self-heals R2 holes: registered applet with missing entry gets re-pulled', async () => {
+    // 模拟历史断层：syncapp 已注册、missing=0，但 R2 内容被删（如合并后同步失败）
+    await env.DB.prepare(`UPDATE t_applets SET missing = 0, entry = 'index.html' WHERE path = 'syncapp'`).run();
+    const dels = (await env.ASSETS.list({ prefix: 'prod/syncapp/' })).objects.map((o) => o.key);
+    for (const k of dels) await env.ASSETS.delete(k);
+    expect(await env.ASSETS.get('prod/syncapp/applet.json')).toBeNull();
+
+    const contents = new Map<string, string>([
+      ['applets/syncapp/applet.json', MANIFEST],
+      ['applets/syncapp/index.html', '<html><script src="/app-runtime.js"></script></html>'],
+    ]);
+    const gh = makeStubGH(
+      [{ path: 'applets/syncapp/applet.json', size: MANIFEST.length }, { path: 'applets/syncapp/index.html', size: 60 }],
+      contents
+    );
+    await syncOnce({ DB: env.DB, ASSETS: env.ASSETS, GITHUB: gh } as any);
+    // 入口文件已被补拉回来
+    const obj = await env.ASSETS.get('prod/syncapp/applet.json');
+    expect(obj).not.toBeNull();
+    expect(await obj!.text()).toBe(MANIFEST);
+  });
 });
 
 describe('syncPreview', () => {

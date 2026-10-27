@@ -152,6 +152,17 @@ export async function syncOnce(env: SyncEnv): Promise<{ added: string[]; missing
     }
   }
 
+  // R2 内容自愈：历史断层（合并后同步失败、平台外合并后状态已被对账修正等）会留下
+  // 「注册行在、R2 空洞」的应用。入口文件缺失即补拉；内容齐全的应用只花一次 R2 读。
+  for (const r of (await env.DB.prepare(`SELECT path, entry FROM t_applets WHERE missing = 0 AND entry IS NOT NULL`).all<{ path: string; entry: string }>()).results) {
+    if (!repoSlugs.has(r.path)) continue;
+    const have = await env.ASSETS.get(`prod/${r.path}/${r.entry}`);
+    if (!have) {
+      console.error(`sync self-heal: ${r.path} entry missing from R2, re-pulling`);
+      await refreshApplet(env, r.path);
+    }
+  }
+
   return { added, missing };
 }
 
