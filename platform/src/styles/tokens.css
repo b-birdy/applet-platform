@@ -3,8 +3,9 @@
 
 /* ── 清新文艺（默认，原浅色） ── */
 :root, html[data-theme='light'] {
-  --canvas: #F6F7F5;
+  --canvas: #EFF5EF;
   --panel: #FFFFFF;
+  --surface-2: #F6FAF5;
   --ink: #1C2422;
   --ink-2: #5A6663;
   --ink-3: #8B9693;
@@ -138,9 +139,9 @@ html[data-theme='glass'] {
 
 /* ── 复古高雅：暖纸底 + 墨绿鎏金 + 衬线展示 ── */
 html[data-theme='classic'] {
-  --canvas: #F5F0E6;
-  --panel: #FDFBF5;
-  --ink: #2C2A24;
+  --canvas: #EDE4CD;
+  --panel: #FAF6EB;
+  --ink: #26241E;
   --ink-2: #635E4F;
   --ink-3: #948D78;
   --line: #E2DAC8;

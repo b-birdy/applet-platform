@@ -3,6 +3,7 @@ import { SPEC_MD as specMd } from './spec-text';
 import { checkAppletWithSizes } from './checker';
 import { getGithubClientForEnv } from './github-bind';
 import { registerAppletTables, SchemaChangeError, ReservedColumnError, appletTable, type ManifestTable } from './data';
+import { getQuota } from './settings';
 
 const enc = new TextEncoder();
 
@@ -94,6 +95,8 @@ export async function dispatchTool(env: McpEnv, auth: AuthCtx, name: string, arg
       return checkAppletTool(args);
     case 'submit_applet':
       return submitApplet(env, agent, args);
+    case 'import_data':
+      return importData(env, agent, args);
     case 'get_status':
       return getStatus(env, agent, args);
     default:
@@ -280,6 +283,66 @@ async function getStatus(env: McpEnv, agent: { id: number }, args: any): Promise
       your_accessible_applets: ownedCount,
     }),
   };
+}
+
+/** agent 向自己名下 applet 的数据表批量导入数据（归属指定用户，保持用户隔离模型） */
+async function importData(env: McpEnv, agent: { id: number; name: string }, args: any): Promise<RpcResult> {
+  const appletId = String(args?.applet_id ?? '').trim();
+  const table = String(args?.table ?? '').trim();
+  const rows = Array.isArray(args?.rows) ? args.rows : null;
+  const asUser = String(args?.as_user ?? 'admin').trim() || 'admin';
+  if (!appletId || !table || !rows || rows.length === 0) return toolDenied('BAD_REQUEST');
+  if (rows.length > 1000) return toolDenied('TOO_MANY_ROWS');
+
+  // 归属校验（D25）
+  const applet = await env.DB.prepare(`SELECT id FROM t_applets WHERE path = ?`).bind(appletId).first<{ id: number }>();
+  if (!applet) return toolDenied('NOT_FOUND');
+  const owned = await env.DB.prepare(`SELECT 1 AS ok FROM t_agent_applets WHERE agent_id = ? AND applet_id = ?`).bind(agent.id, applet.id).first();
+  if (!owned) return toolDenied('AGENT_SCOPE');
+
+  // 表与列白名单（来自清单快照）
+  const snap = await env.DB.prepare(`SELECT value FROM t_settings WHERE key = ?`).bind(`manifest.${appletId}`).first<{ value: string }>();
+  if (!snap?.value) return toolDenied('TABLE_NOT_FOUND');
+  const manifest = JSON.parse(snap.value) as Record<string, { columns: Record<string, string> }>;
+  if (!manifest[table]) return toolDenied('TABLE_NOT_FOUND', { table });
+  const allowed = new Set(Object.keys(manifest[table].columns));
+
+  // 目标用户
+  const user = await env.DB.prepare(`SELECT id FROM t_users WHERE username = ?`).bind(asUser).first<{ id: number }>();
+  if (!user) return toolDenied('USER_NOT_FOUND', { username: asUser });
+
+  // 行清洗：托管列丢弃、非白名单列拒绝（显式报错优于静默丢字段——与读路径对称）
+  const clean: Record<string, unknown>[] = [];
+  for (const r of rows) {
+    const vals: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(r ?? {})) {
+      if (k === 'id' || k === 'created_at' || k === 'user_id') continue;
+      if (!allowed.has(k)) return toolDenied('BAD_COLUMN', { table, column: k });
+      vals[k] = v;
+    }
+    if (Object.keys(vals).length === 0) return toolDenied('BAD_REQUEST', { message: '某行不含任何有效列' });
+    clean.push(vals);
+  }
+
+  // 配额（按目标用户计）
+  const quota = await getQuota(env.DB, appletId);
+  const count = (await env.DB.prepare(`SELECT COUNT(*) AS n FROM ${appletTable(appletId, table)} WHERE user_id = ?`).bind(user.id).first()) as { n: number } | null;
+  if ((count?.n ?? 0) + clean.length > quota.rows) {
+    return toolDenied('QUOTA_EXCEEDED', { used: { rows: count?.n ?? 0 }, limit: quota, incoming: clean.length });
+  }
+
+  const stmts = clean.map((vals) => {
+    const keys = Object.keys(vals);
+    return env.DB.prepare(
+      `INSERT INTO ${appletTable(appletId, table)} (user_id, ${keys.map((k) => `"${k}"`).join(', ')}) VALUES (?, ${keys.map(() => '?').join(', ')})`
+    ).bind(user.id, ...Object.values(vals));
+  });
+  await env.DB.batch(stmts);
+
+  await env.DB.prepare(`INSERT INTO t_audit_logs (actor_type, actor_id, action, target, detail) VALUES ('agent', ?, 'agent.import_data', ?, ?)`)
+    .bind(String(agent.id), appletId, JSON.stringify({ table, rows: clean.length, as_user: asUser })).run();
+
+  return { status: 200, body: wrapTool({ ok: true, imported: clean.length, table, as_user: asUser }) };
 }
 
 export { TOOL_NAMES };

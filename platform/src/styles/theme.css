@@ -88,3 +88,43 @@ html[data-theme='classic'] h1, html[data-theme='classic'] h2, html[data-theme='c
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition-duration: .01ms !important; animation-duration: .01ms !important; }
 }
+
+/* ── 内容区主题底纹（.main 右侧显示区，与主题气质相符） ── */
+
+/* 清新文艺：极淡的翠绿斜纹织物质感 */
+html[data-theme='light'] .main {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    transparent 0 12px,
+    color-mix(in srgb, var(--accent) 2.5%, transparent) 12px 24px
+  );
+}
+
+/* 暗黑模式：极细点阵网格 */
+html[data-theme='dark'] .main {
+  background-image: radial-gradient(color-mix(in srgb, var(--ink) 4%, transparent) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+/* 极简主义：无底纹——留白即纹理 */
+html[data-theme='minimal'] .main { background-image: none; }
+
+/* 霓虹渐变：斜向流动的霓虹光带（低透明度） */
+html[data-theme='neon'] .main {
+  background-image: linear-gradient(115deg, transparent 0 40%, rgba(124, 92, 255, .05) 50%, rgba(225, 92, 170, .04) 60%, transparent 70% 100%);
+}
+
+/* 玻璃拟态：磨砂噪点 */
+html[data-theme='glass'] .main {
+  background-image: radial-gradient(rgba(255, 255, 255, .035) 1px, transparent 1px);
+  background-size: 3px 3px;
+}
+
+/* 复古高雅：细横纹纸质感 */
+html[data-theme='classic'] .main {
+  background-image: repeating-linear-gradient(
+    0deg,
+    transparent 0 3px,
+    rgba(140, 122, 62, .025) 3px 4px
+  );
+}

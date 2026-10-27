@@ -156,6 +156,10 @@ describe('submit flow (approved agent)', () => {
   let agentId: number;
 
   beforeAll(async () => {
+    // import_data 的默认归属用户 admin 需要 t_users 行（本文件隔离存储，Task 3 的 setup 不覆盖这里）
+    const { hashPassword } = await import('./auth');
+    const seedHash = await hashPassword('seed-pw-123');
+    await env.DB.prepare(`INSERT OR IGNORE INTO t_users (username, password_hash, role) VALUES ('admin', ?, 'superadmin')`).bind(seedHash).run();
     // 生成码 → apply → approve → 拿明文 key
     const code = await makeAccessCode();
     await callTool('agent_apply', { name: 'builder', fingerprint: 'fp-build-9' }, code);
@@ -352,6 +356,36 @@ describe('submit flow (approved agent)', () => {
   function res2ok(r: { json: any }): boolean {
     return toolResult(r.json).ok === true;
   }
+
+  it('import_data: ownership, column whitelist, success path', async () => {
+    // 复用 upsert-agent（已归属 up-app，manifest 有一张表）——注册快照里 up-app 的表是 items
+    const code = await makeAccessCode();
+    await callTool('agent_apply', { name: 'imp-agent', fingerprint: 'fp-imp' }, code);
+    const iid = (await env.DB.prepare(`SELECT id FROM t_agents WHERE name='imp-agent'`).first<any>()).id;
+    const r0 = await SELF.fetch(`https://x/api/admin/agents/${iid}/approve`, { method: 'POST', headers: { cookie: adminCookie }, body: '{}' });
+    const ik = (await r0.json() as any).key;
+    setGithubClient(makeGithubNoop().gh);
+    // 先提交 imp-app 建归属
+    const impFiles = { ...GOOD_FILES, 'applet.json': (GOOD_FILES['applet.json'] as string).replace('mcapp', 'imp-app') };
+    await callTool('submit_applet', { applet_id: 'imp-app', name: 'IMP', files: impFiles }, ik);
+
+    // ① 未归属的 applet → AGENT_SCOPE
+    const r1 = await callTool('import_data', { applet_id: 'mcapp', table: 'items', rows: [{ title: 'x' }] }, ik);
+    expect(toolResult(r1.json).error).toBe('AGENT_SCOPE');
+    // ② 非白名单列 → BAD_COLUMN
+    const r2 = await callTool('import_data', { applet_id: 'imp-app', table: 'items', rows: [{ title: 'a', evil: 1 }] }, ik);
+    expect(toolResult(r2.json).error).toBe('BAD_COLUMN');
+    // ③ 成功导入（admin 用户存在）
+    const r3 = await callTool('import_data', { applet_id: 'imp-app', table: 'items', rows: [{ title: 'row1' }, { title: 'row2' }] }, ik);
+    expect(toolResult(r3.json).imported).toBe(2);
+    // 数据落库且归属 admin
+    const rows = await env.DB.prepare(`SELECT user_id, title FROM a_imp_app_items`).all();
+    expect(rows.results).toHaveLength(2);
+    expect(rows.results[0].title).toBe('row1');
+    // 审计
+    const audit = await env.DB.prepare(`SELECT action FROM t_audit_logs WHERE action='agent.import_data'`).all();
+    expect(audit.results.length).toBe(1);
+  });
 
   it('revoked key is rejected immediately (Review Focus 3)', async () => {
     const r = await SELF.fetch(`https://x/api/admin/agents/${agentId}/revoke`, { method: 'POST', headers: { cookie: adminCookie }, body: '{}' });

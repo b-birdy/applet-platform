@@ -3,7 +3,7 @@
 import { ref, computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useAuthStore } from '../stores/auth';
-import { useThemeStore } from '../stores/theme';
+import { useThemeStore, THEMES } from '../stores/theme';
 
 const auth = useAuthStore();
 const theme = useThemeStore();
@@ -11,6 +11,12 @@ const route = useRoute();
 const router = useRouter();
 
 const collapsed = ref(window.innerWidth < 768); // 手机窄屏默认折叠
+const themePanel = ref(false);
+function pickTheme(id: string) {
+  theme.setMode(id as any);
+  // 同步到账号（与 Profile 页一致），失败静默（未登录等场景本地生效即可）
+  fetch('/api/profile', { method: 'PUT', credentials: 'include', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ theme: id }) }).catch(() => {});
+}
 const isMobile = ref(window.innerWidth < 768);
 window.addEventListener('resize', () => {
   isMobile.value = window.innerWidth < 768;
@@ -69,9 +75,24 @@ async function logout() {
       </nav>
 
       <div class="foot">
-        <button class="nav as-btn" @click="theme.setMode(theme.mode === 'dark' ? 'light' : 'dark')" :title="theme.mode === 'dark' ? '切浅色' : '切深色'">
-          <span class="ico">{{ theme.mode === 'dark' ? '☀' : '☾' }}</span>
+        <button class="nav as-btn" :title="'切换主题（当前：' + (THEMES.find((t) => t.id === theme.mode)?.name ?? theme.mode) + '）'" @click="themePanel = !themePanel">
+          <span class="ico">🎨</span>
+          <span v-show="!collapsed">主题</span>
         </button>
+        <div v-if="themePanel" class="theme-panel">
+          <button
+            v-for="t in THEMES"
+            :key="t.id"
+            type="button"
+            class="theme-item"
+            :class="{ on: theme.mode === t.id }"
+            @click="pickTheme(t.id)"
+          >
+            <span class="sw" :style="{ background: t.swatch }"></span>
+            <span>{{ t.name }}</span>
+            <span v-if="theme.mode === t.id" class="tick">✓</span>
+          </button>
+        </div>
         <button class="nav as-btn" @click="logout" title="退出登录">
           <span class="ico">⎋</span>
           <span v-show="!collapsed">退出 ({{ auth.me?.username }})</span>
@@ -112,7 +133,21 @@ nav { flex: 1; display: flex; flex-direction: column; gap: 2px; }
 .nav.on { background: linear-gradient(135deg, var(--accent-weak), color-mix(in srgb, var(--accent) 16%, var(--panel))); color: var(--accent); font-weight: 600; box-shadow: inset 2.5px 0 0 var(--accent); border-radius: 6px 10px 10px 6px; }
 .side { background: linear-gradient(180deg, var(--surface-2), var(--panel) 120px); }
 .ico { width: 16px; text-align: center; flex: none; }
-.foot { border-top: 1px solid var(--line); padding-top: 8px; display: flex; flex-direction: column; gap: 2px; }
+.foot { border-top: 1px solid var(--line); padding-top: 8px; display: flex; flex-direction: column; gap: 2px; position: relative; }
+.theme-panel {
+  position: absolute; bottom: calc(100% + 8px); left: 8px; right: 8px; z-index: 20;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+  box-shadow: var(--shadow-lg); padding: 6px;
+}
+.theme-item {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  border: none; background: none; font: inherit; font-size: 13px; color: var(--ink-2);
+  padding: 6px 8px; border-radius: 6px; cursor: pointer; text-align: left;
+}
+.theme-item:hover { background: var(--accent-soft); }
+.theme-item.on { color: var(--accent); font-weight: 600; }
+.theme-item .sw { width: 16px; height: 16px; border-radius: 4px; border: 1px solid rgba(0,0,0,.1); flex: none; }
+.theme-item .tick { margin-left: auto; }
 .as-btn { width: 100%; }
 .fold {
   position: absolute; right: -1px; top: 50%; transform: translateY(-50%);
