@@ -114,11 +114,12 @@ async function serveFrom(c: any, prefix: string, slug: string, filePath: string,
     // 把相对路径的 <link rel=stylesheet> 与 <script src> 内联为对应内容。
     const baseDir = `prod/${slug}/`;
     const inlineAsset = async (path: string): Promise<string | null> => {
-      // 只处理同目录相对路径（./x、x、../x），拒绝绝对路径与跨目录逃逸
+      // 只处理 applet 目录内的相对路径（./x、x、子目录/x），拒绝绝对路径与跨目录逃逸
       if (/^(https?:|\/|data:)/i.test(path)) return null;
       const normalized = path.replace(/^\.\//, '');
-      const full = `${baseDir}${slug}/${normalized}`.replace('/../', '/').replace(/\/\//g, '/');
-      const asset = await c.env.ASSETS.get(full);
+      if (normalized.includes('..')) return null;
+      // baseDir 已含 slug（prod/<slug>/），normalized 相对 applet 根
+      const asset = await c.env.ASSETS.get(`${baseDir}${normalized}`);
       return asset ? await asset.text() : null;
     };
     // 内联样式表

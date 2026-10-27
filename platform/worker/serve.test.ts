@@ -120,6 +120,18 @@ describe('applet static serving', () => {
     expect(csp).not.toContain('script-src https://');
   });
 
+  it('inlines assets from applet subdirectories (path regression: no double-slug)', async () => {
+    // 子目录资源（assets/xxx.css）曾因路径拼接重复 slug 而静默内联失败
+    await env.ASSETS.put('prod/serving-app/assets/theme.css', '.t { color: teal; }');
+    await env.ASSETS.put('prod/serving-app/sub.html',
+      '<!DOCTYPE html><html><head><link rel="stylesheet" href="assets/theme.css"></head><body>x</body></html>');
+    const r = await SELF.fetch('https://x/app/serving-app/sub.html', { headers: { cookie: adminCookie } });
+    const html = await r.text();
+    expect(html).toContain('data-inlined-from="assets/theme.css"');
+    expect(html).toContain('.t { color: teal; }');
+    expect(html).not.toMatch(/<link[^>]*stylesheet/);
+  });
+
   it('serves app-runtime.js placeholder', async () => {
     const r = await SELF.fetch('https://x/app-runtime.js');
     expect(r.status).toBe(200);
