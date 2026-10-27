@@ -60,6 +60,8 @@ const ACTION_ZH: Record<string, string> = {
   'agent.submit': 'Agent 提交小程序',
   'my.purge': '用户清除自己的数据',
   'agent.import_data': 'Agent 导入数据',
+  'applet.prompt_copied': '复制提示词（任务开单）',
+  'task.cancel': '作废任务',
 };
 
 // 操作人显示：user → 用户名（如「用户: admin」），agent → 认证名称（如「Agent: WorkBuddy 智能体（词汇整理）」）

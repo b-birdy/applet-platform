@@ -53,6 +53,10 @@ const stepTitles = ['基本信息', '开发', '规范自检', '检查结果', '�
 async function copy(text: string) {
   await navigator.clipboard.writeText(text);
   ElMessage.success('已复制到剪贴板');
+  // 复制即开单/刷新任务时间线（推进中任务）；失败静默（不影响主流程）
+  try {
+    await api('/api/admin/tasks/track', { method: 'POST', body: { kind: 'create', path: form.value.id } });
+  } catch { /* 下次复制再试 */ }
 }
 
 function next() {

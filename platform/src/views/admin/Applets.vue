@@ -61,6 +61,7 @@ async function load() {
   users.value = u.users;
 }
 onMounted(load);
+onMounted(loadTasks);
 
 const TRANSITIONS: Record<string, { to: string; label: string }[]> = {
   testing: [{ to: 'enabled', label: '启用' }, { to: 'disabled', label: '停用' }],
@@ -284,19 +285,59 @@ async function openAdoptAgent(a: Applet) {
 async function copyAdopt() {
   await navigator.clipboard.writeText(adoptPromptText.value);
   ElMessage.success('已复制到剪贴板');
+  // 接管提示词复制 → 开一张 modify 任务（推进中任务列表可见）
+  try {
+    await api('/api/admin/tasks/track', { method: 'POST', body: { kind: 'modify', path: adoptTarget.value!.path } });
+  } catch { /* 静默 */ }
 }
 
 function onWizardCreated() {
   wizardVisible.value = false;
   load();
 }
+
+// 推进中任务：数量徽标 + 抽屉列表
+type TaskRow = { key: string; kind: 'create' | 'modify'; path: string; name: string; step: string; step_label: string; pr_number: number | null; started_at: string | null; aged: boolean };
+const tasksVisible = ref(false);
+const tasks = ref<TaskRow[]>([]);
+const taskCount = ref(0);
+const tasksLoading = ref(false);
+
+async function loadTasks() {
+  tasksLoading.value = true;
+  try {
+    const res = await api<{ tasks: TaskRow[]; active: number }>('/api/admin/tasks');
+    tasks.value = res.tasks;
+    taskCount.value = res.active;
+  } catch { /* 静默 */ }
+  tasksLoading.value = false;
+}
+
+async function cancelTask(t: TaskRow) {
+  try {
+    await api(`/api/admin/tasks/${t.kind}/${t.path}/cancel`, { method: 'POST' });
+    await loadTasks();
+  } catch { /* 静默 */ }
+}
+
+const kindLabel: Record<string, string> = { create: '新建', modify: '修改' };
+const stepTag: Record<string, { type: 'warning' | 'primary' | 'success'; label: string }> = {
+  waiting_submit: { type: 'warning', label: '等待提交' },
+  pr_open: { type: 'primary', label: 'PR 待合并' },
+  done: { type: 'success', label: '已完成' },
+};
 </script>
 
 <template>
   <div>
     <header class="head">
       <h1>小程序管理</h1>
-      <el-button type="primary" @click="wizardVisible = true">＋ 新增小程序</el-button>
+      <div class="head-ops">
+        <el-badge :value="taskCount" :hidden="taskCount === 0" type="warning">
+          <el-button @click="tasksVisible = true; loadTasks()">推进中任务</el-button>
+        </el-badge>
+        <el-button type="primary" @click="wizardVisible = true">＋ 新增小程序</el-button>
+      </div>
     </header>
 
     <el-table :data="applets" stripe :row-class-name="({ row }: any) => statusRowClass[row.status] ?? ''">
@@ -510,11 +551,41 @@ function onWizardCreated() {
       </ul>
       <el-button style="margin-top: 12px" @click="copyHealth">复制完整报告（给 agent）</el-button>
     </el-drawer>
+
+    <!-- 推进中任务抽屉 -->
+    <el-drawer v-model="tasksVisible" title="推进中任务" size="460px">
+      <p class="hint" style="margin: 0 0 12px">复制提示词后自动开单；agent 提交 PR 后进入「待合并」，合并即自动关单（新建任务）或按合并时间判定（修改任务）。任务挂起 7 天以上会标灰提醒。</p>
+      <div v-loading="tasksLoading">
+        <el-empty v-if="!tasksLoading && tasks.length === 0" description="暂无推进中的任务" :image-size="60" />
+        <div v-for="t in tasks" :key="t.key" class="task" :class="{ aged: t.aged, done: t.step === 'done' }">
+          <div class="task-top">
+            <el-tag size="small" :type="t.kind === 'create' ? 'success' : 'primary'">{{ kindLabel[t.kind] }}</el-tag>
+            <b>{{ t.name }}</b>
+            <span class="task-path">{{ t.path }}</span>
+            <el-tag size="small" :type="stepTag[t.step]?.type ?? 'info'" style="margin-left: auto">{{ stepTag[t.step]?.label ?? t.step_label }}</el-tag>
+          </div>
+          <div class="task-meta">
+            <span v-if="t.step_label && t.step !== 'pr_open'">{{ t.step_label }}</span>
+            <span v-if="t.started_at">开始于 {{ t.started_at }}</span>
+            <span v-if="t.aged" class="aged-note">已挂起 7 天以上</span>
+            <el-button v-if="t.step !== 'done'" text size="small" type="danger" @click="cancelTask(t)">作废</el-button>
+          </div>
+        </div>
+      </div>
+    </el-drawer>
   </div>
 </template>
 
 <style scoped>
 .head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+.head-ops { display: flex; align-items: center; gap: 12px; }
+.task { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-bottom: 10px; font-size: 13px; }
+.task.aged { opacity: .62; }
+.task.done { opacity: .5; }
+.task-top { display: flex; align-items: center; gap: 8px; }
+.task-path { font-size: 11px; color: var(--ink-3); font-family: ui-monospace, monospace; }
+.task-meta { display: flex; align-items: center; gap: 10px; margin-top: 6px; font-size: 12px; color: var(--ink-3); flex-wrap: wrap; }
+.aged-note { color: var(--warn); }
 h1 { font-size: 17px; margin: 0; }
 .appname { display: flex; align-items: center; gap: 9px; }
 .appname .ic { width: 28px; height: 28px; border-radius: 7px; background: var(--accent-weak); color: var(--accent); display: flex; align-items: center; justify-content: center; font-size: 15px; }
