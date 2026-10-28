@@ -37,7 +37,7 @@
   // 构建版本号：显示在测试配置页底部。
   // 用途：确认手机上跑的是哪一版代码 —— 手机浏览器会顽固缓存 app.js，
   // 曾经出现过"合并了新版本却完全没生效"的误判，有这个数字就能一眼确认。
-  var BUILD_VERSION = '1.3';
+  var BUILD_VERSION = '1.4';
 
   /** 读 localStorage；不可用时返回默认值。 */
   function lsGet(k, d) {
@@ -556,6 +556,72 @@
     }
   };
 
+  /* ------------------------- 打包本地中文字音 ------------------------- */
+  /*
+   * 为什么需要：在线朗读接口在平台沙箱里多次实测不可用（百度校验 Referer 白名单、
+   * 有道英文句随机 500），而系统 TTS 在手机上常常没有语音包、读音也不准。
+   * 430 个汉字的标准普通话读音已离线打包成 audio_zh.js（data:audio/mpeg;base64），
+   * 播放它不发出任何网络请求 —— Referer、CSP、限流、断网全都影响不到。
+   *
+   * 数据结构：window.AUDIO_ZH = { "<汉字>": "data:audio/mpeg;base64,..." }。
+   * 由 ../audio_zh_raw/build.py 生成，汉字读音更新后重跑该脚本即可。
+   */
+  var BundledAudio = {
+    el: null,   // 复用同一个 Audio 元素（data: URI 无需缓存管理）
+
+    /** 取某汉字的打包读音（data URI）；没有返回 ''。 */
+    get: function (ch) {
+      try {
+        var m = window.AUDIO_ZH || {};
+        var v = m[ch];
+        return (typeof v === 'string' && v.indexOf('data:audio') === 0) ? v : '';
+      } catch (e) { return ''; }
+    },
+
+    /** 是否已打包（用于自检显示）。 */
+    count: function () {
+      try { return Object.keys(window.AUDIO_ZH || {}).length; } catch (e) { return 0; }
+    },
+
+    /**
+     * 播放某汉字的打包读音，times 遍（遍间隔 350ms，模拟原来「汉，汉」的停顿节奏）。
+     * @returns {Promise<boolean>} true=播完；false=播放失败（调用方应降级到在线/系统链路）
+     */
+    speak: function (ch, times) {
+      var self = this;
+      var src = this.get(ch);
+      if (!src) { return Promise.resolve(false); }
+      times = Math.max(1, Math.floor(times) || 1);
+      if (!this.el) { this.el = new Audio(); }
+      var el = this.el;
+      var n = 0;
+
+      var playOne = function () {
+        el.src = src;   // data: URI 瞬时可用
+        var p = el.play();
+        if (p && typeof p.then === 'function') {
+          return p.then(function () { return waitAudioEnd(el, 15000); });
+        }
+        return waitAudioEnd(el, 15000);
+      };
+      var step = function () {
+        if (n >= times) { return Promise.resolve(true); }
+        n += 1;
+        return playOne().then(function () {
+          return new Promise(function (resolve) { window.setTimeout(resolve, 350); });
+        }).then(step, function () {
+          // 第一遍就放不出来（权限/解码问题）才算失败；中途失败也按已播处理，避免重复降级
+          return Promise.resolve(n > 1);
+        });
+      };
+      return step();
+    },
+
+    stop: function () {
+      if (this.el) { try { this.el.pause(); } catch (e) { /* 忽略 */ } }
+    }
+  };
+
   var Speech = {
     supported: typeof window.speechSynthesis !== 'undefined',
     voice: null,
@@ -1004,6 +1070,7 @@
       var seg = this.items[i];
       var isSeg = (seg && typeof seg === 'object');
       var text = isSeg ? String(seg.text || '') : String(seg);
+      var rawText = text;   // 原始单字（未被下面的「重复 N 遍」改写成"汉，汉"），打包字音按它查表
       var lang = (isSeg && seg.lang === 'zh') ? 'zh' : 'en';
       var voice = lang === 'zh' ? (this.zhVoice || this.voice) : this.voice;
 
@@ -1111,14 +1178,19 @@
           }
         }, WATCHDOG_MS);
       };
-      // —— 在线音源优先 ——
-      // 手机端系统没有 TTS 语音包时，改走联网朗读；成功则按原节奏推进下一段。
-      // 失败（限流 503/500、断网、接口变更）自动降级回上面的系统音色链路，
-      // 因此 PC 端已有的正常行为不会被破坏。
-      if (this._onlineOn()) {
+      // —— 打包本地中文字音优先 ——
+      // 联网朗读在平台沙箱里被 Referer 校验 / 安全策略挡住的可能性高（v1.3 实测用户端仍不发声），
+      // 打包音频是 data: URI，不发出任何网络请求，从根上绕开这些问题。
+      // 失败（极少见，如解码异常）再走在线 / 系统链路，保证一定有声。
+      var speakOnline = function () {
+        // —— 在线音源 ——
+        // 手机端系统没有 TTS 语音包时，改走联网朗读；成功则按原节奏推进下一段。
+        // 失败（限流 503/500、断网、接口变更）自动降级回系统音色链路，
+        // 因此 PC 端已有的正常行为不会被破坏。
+        if (!self._onlineOn()) { speakOnce(); return; }
         // 注意：这里必须传音色 id 字符串，不能传音色对象，
         // 否则 speak() 里 v.id === voiceId 永远为假，首选音色不生效（表现为换音色没反应）。
-        var ov = this._voiceOf(lang);
+        var ov = self._voiceOf(lang);
         OnlineTTS.speak(text, lang, ov ? ov.id : '', rate0).then(function (ok) {
           if (ok) {
             // 首选音色不可用、实际用了替补时明确告知，
@@ -1133,9 +1205,16 @@
           try { u.rate = rate0; } catch (e) { /* 忽略 */ }
           speakOnce();   // 降级：系统音色
         });
+      };
+      if (lang === 'zh' && BundledAudio.get(rawText)) {
+        BundledAudio.speak(rawText, segRepeat).then(function (ok) {
+          if (ok) { advance(gap); return; }
+          if (self.stopped || self._gen !== gen0) return;
+          speakOnline();
+        });
         return;
       }
-      speakOnce();
+      speakOnline();
     },
 
     /** 停止朗读（不触发 onDone）。 */
@@ -1148,6 +1227,7 @@
         try { window.speechSynthesis.cancel(); } catch (e) { /* 忽略 */ }
       }
       try { OnlineTTS.stop(); } catch (e) { /* 忽略 */ }
+      try { BundledAudio.stop(); } catch (e) { /* 忽略 */ }
       this.current = null;
     },
 
@@ -1657,29 +1737,44 @@
     if (!out) return;
     var parts = [];
 
-    if (!Speech._onlineOn()) {
-      parts.push('当前用的是系统音色');
-      parts.push('设备语音包：' + (Speech.voices.length ? Speech.voices.length + ' 个可用' : '一个都没检测到'));
-      parts.push('若完全没声音，说明手机没装 TTS 语音包，请把发音来源改成「在线音源」');
+    // 1) 打包本地字音：不依赖网络，永远可用
+    var bundledN = BundledAudio.count();
+    parts.push('内置中文字音：' + (bundledN ? bundledN + ' 字（离线可用）' : '未打包'));
+    if (!bundledN) {
+      parts.push('⚠ 本页代码是旧版本缓存：请完全关闭浏览器后重新打开（内置字音在 v1.4 起生效）');
+    }
+    out.textContent = parts.join('；') + '｜正在测试内置字音…';
+
+    // 2) 实测播放一个打包字音（动态取表里的第一个字；注意词库是生僻字，「汉」并不在其中）
+    var probeCh = '';
+    try { probeCh = Object.keys(window.AUDIO_ZH || {})[0] || ''; } catch (e) { /* 忽略 */ }
+    if (!probeCh) {
+      parts.push('无法测试（表为空）');
       out.textContent = parts.join('；');
       return;
     }
-
-    var v = Speech._voiceOf('en') || defaultOnlineVoice('en');
-    parts.push('正在用 ' + (v ? v.label : '默认音色') + ' 联网试听…');
-    out.textContent = parts.join('；');
-
-    OnlineTTS.probe('Hello', 'en', v).then(function (r) {
-      if (r.ok) {
-        parts[0] = '联网朗读成功，应该能听到声音';
-        parts.push('当前音色：' + (v ? v.label : '默认'));
-        parts.push('若换音色仍听不出区别，说明命中了下表同一发音人（免密钥接口只有一个人声）');
-      } else {
-        parts[0] = '联网朗读失败：' + r.err;
-        parts.push('这通常是被接口的来源校验挡了，或网络被拦截');
-        parts.push('可临时把发音来源改成「系统音色」应急');
+    BundledAudio.speak(probeCh, 1).then(function (ok) {
+      parts.push(ok ? '内置字音播放：成功' : '内置字音播放：失败');
+      if (!ok) {
+        out.textContent = parts.join('；');
+        return;
       }
+      // 3) 再测联网链路（英文走这里）
+      if (!Speech._onlineOn()) {
+        parts.push('发音来源：系统音色（英文用设备语音包）');
+        parts.push('设备语音包：' + (Speech.voices.length ? Speech.voices.length + ' 个可用' : '一个都没检测到'));
+        out.textContent = parts.join('；');
+        return;
+      }
+      var v = Speech._voiceOf('en') || defaultOnlineVoice('en');
+      parts.push('正在用 ' + (v ? v.label : '默认音色') + ' 联网试听英文…');
       out.textContent = parts.join('；');
+      OnlineTTS.probe('Hello', 'en', v).then(function (r) {
+        parts.push(r.ok
+          ? '联网英文：成功'
+          : '联网英文：失败（' + r.err + '）—— 中文不受影响，英文会退回系统语音');
+        out.textContent = parts.join('；');
+      });
     });
   }
 
@@ -2113,8 +2208,9 @@
 
   function playCardSpeech(card) {
     // 在线音源自带中文音色，不依赖系统是否安装中文语音包；
+    // 打包字音更进一步：读音就放在本地（audio_zh.js），连网络都不需要。
     // 否则手机端 zhVoice 为空会误判成"无中文音色"，退回用英文腔读拼音（即发音不准的根因）。
-    var hasZh = Speech._onlineOn() ? true : !!Speech.zhVoice;
+    var hasZh = Speech._onlineOn() || !!Speech.zhVoice || !!BundledAudio.get(card.char);
     var texts = buildSpeechTexts(card, hasZh);
     var per = texts.length;
     Speech.play(texts, {

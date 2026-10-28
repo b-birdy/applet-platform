@@ -15,7 +15,7 @@
   <title>CEBSB汉英双拼练习</title>
   <link rel="icon" type="image/svg+xml" href="icon.svg">
   <meta name="theme-color" content="#2e6f5e">
-  <link rel="stylesheet" href="style.css?v=1.3">
+  <link rel="stylesheet" href="style.css?v=1.4">
   <!-- 平台运行时：提供 window.applet.data(表名)，数据按登录用户隔离 -->
   <script src="/app-runtime.js"></script>
 </head>
@@ -353,7 +353,10 @@
 
   <!-- 加 ?v= 版本号强制刷新缓存：手机浏览器对 app.js 缓存很顽固，
        不换 URL 会在合并新版本后仍执行旧代码（表现为「改了却完全没效果」） -->
-  <script src="cards.js?v=1.3"></script>
-  <script src="app.js?v=1.3"></script>
+  <script src="cards.js?v=1.4"></script>
+  <!-- 内置 430 个汉字的标准普通话读音（data:audio/mpeg，离线播放，不依赖任何网络接口）
+       由 ../audio_zh_raw/build.py 生成，更新读音后重跑并同步递增 ?v= -->
+  <script src="audio_zh.js?v=1.4"></script>
+  <script src="app.js?v=1.4"></script>
 </body>
 </html>
