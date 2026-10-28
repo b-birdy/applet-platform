@@ -109,6 +109,15 @@
           </div>
 
           <div class="field">
+            <span class="field-label">发音来源</span>
+            <select class="select select-block" id="select-source">
+              <option value="online">在线音源（推荐，手机端无需语音包）</option>
+              <option value="system">系统音色（用设备已装的语音包）</option>
+            </select>
+            <p class="hint">在线音源通过联网的朗读接口直接合成语音，手机端也能正常发声；若接口限流或断网，会自动退回系统音色。</p>
+          </div>
+
+          <div class="field">
             <span class="field-label">朗读语音</span>
             <select class="select select-block" id="select-voice">
               <option value="">自动（最清晰女声）</option>

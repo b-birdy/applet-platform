@@ -28,6 +28,24 @@
   var LS_RATE = 'zika.rate.v2';          // v2：默认语速改为 0.6×，旧记录不再沿用
   var LS_ZHVOICE = 'zika.zhVoiceURI.v2'; // v2：中文音色候选改为 2 女 + 2 男，旧记录不再沿用
   var LS_ZHREPEAT = 'zika.zhRepeat';
+  // 在线音源相关的偏好只存 localStorage：cebsb_settings 表没有对应列，
+  // 写进去既会报错，也会覆盖系统音色偏好（后者要留在云端表里）。
+  var LS_SOURCE = 'zika.source';                 // 发音来源：online / system
+  var LS_ONLINE_VOICE = 'zika.onlineVoice';      // 在线英文音色 id
+  var LS_ONLINE_VOICE_ZH = 'zika.onlineVoiceZh';  // 在线中文音色 id
+
+  /** 读 localStorage；不可用时返回默认值。 */
+  function lsGet(k, d) {
+    try {
+      var v = window.localStorage.getItem(k);
+      return (v === null || v === undefined) ? d : v;
+    } catch (e) { return d; }
+  }
+
+  /** 写 localStorage；不可用时静默忽略。 */
+  function lsSet(k, v) {
+    try { window.localStorage.setItem(k, String(v)); } catch (e) { /* 忽略 */ }
+  }
 
   // 词性缩写 → 英文全称（用于语音朗读）
   var POS_MAP = {
@@ -286,6 +304,170 @@
     return Math.max(1500, ms + 2000);
   }
 
+  /* ------------------------- 在线音源 ------------------------- */
+  /*
+   * 为什么需要：手机端浏览器（Edge 移动版等）常未安装可用的 TTS 语音包，
+   * speechSynthesis.getVoices() 返回空列表 → 页面显示「自动（未检测到音色）」
+   * 「自动配对（无中文音色）」，汉字只能用英文腔读拼音，发音不准。
+   *
+   * 关键约束（实测）：有道与百度接口都不返回 CORS 头，
+   *   所以只能用 <audio src> 直接播放，不能用 fetch/XHR 下载成 Blob（会被拦截）。
+   *   缓存因此靠两点：① 复用同一个 Audio 元素（倒回 0 重播，不发新请求）；
+   *                    ② 浏览器 HTTP 缓存（百度返回 Cache-Control: max-age=3600）。
+   * 有道对长英文例句会间歇性返回 500，故与百度互备；全部失败再退回系统音色。
+   */
+
+  /** 在线音色目录：英文 4 个 / 中文 4 个（跨引擎 + 口音、语速组合）。 */
+  var ONLINE_VOICES = [
+    { id: 'en-baidu-f1', lang: 'en', provider: 'baidu', spd: 3, label: '百度 · 英文女声（标准）' },
+    { id: 'en-baidu-f2', lang: 'en', provider: 'baidu', spd: 2, label: '百度 · 英文女声（舒缓）' },
+    { id: 'en-youdao-m1', lang: 'en', provider: 'youdao', accent: 'uk', label: '有道 · 英文男声（英音）' },
+    { id: 'en-youdao-m2', lang: 'en', provider: 'youdao', accent: 'us', label: '有道 · 英文男声（美音）' },
+    { id: 'zh-baidu-f1', lang: 'zh', provider: 'baidu', spd: 3, label: '百度 · 中文女声（标准）' },
+    { id: 'zh-baidu-f2', lang: 'zh', provider: 'baidu', spd: 2, label: '百度 · 中文女声（舒缓）' },
+    { id: 'zh-youdao-m1', lang: 'zh', provider: 'youdao', label: '有道 · 中文男声（标准）' },
+    { id: 'zh-youdao-m2', lang: 'zh', provider: 'youdao', label: '有道 · 中文男声（备用）' }
+  ];
+
+  /** 取某语言的在线音色列表。 */
+  function onlineVoicesOf(lang) {
+    return ONLINE_VOICES.filter(function (v) { return v.lang === lang; });
+  }
+
+  /** 取某语言的默认在线音色。 */
+  function defaultOnlineVoice(lang) {
+    return onlineVoicesOf(lang)[0] || null;
+  }
+
+  /** 按 id 找在线音色（找不到返回该语言默认）。 */
+  function findOnlineVoice(lang, id) {
+    var hit = onlineVoicesOf(lang).filter(function (v) { return v.id === id; })[0];
+    return hit || defaultOnlineVoice(lang);
+  }
+
+  /** 把长文本切成 <= max 字符的小段，优先在标点/空格处断开。 */
+  function chunkText(text, max) {
+    var s = String(text || '').trim();
+    if (!s) return [];
+    if (s.length <= max) return [s];
+    var out = [], buf = '';
+    for (var i = 0; i < s.length; i++) {
+      buf += s.charAt(i);
+      var atBreak = /[，,。.；;！!？?、\s]/.test(s.charAt(i));
+      if (buf.length >= max && atBreak) { out.push(buf.trim()); buf = ''; }
+      else if (buf.length >= max + 25) { out.push(buf.trim()); buf = ''; }
+    }
+    if (buf.trim()) out.push(buf.trim());
+    return out.filter(function (x) { return x.length > 0; });
+  }
+
+  /** 等待 audio 播完；成功 resolve，失败/超时 reject。 */
+  function waitAudioEnd(el, timeoutMs) {
+    return new Promise(function (resolve, reject) {
+      var done = false;
+      var timer = window.setTimeout(function () { finish(false); }, timeoutMs || 30000);
+      function finish(ok) {
+        if (done) return;
+        done = true;
+        window.clearTimeout(timer);
+        el.removeEventListener('ended', onend);
+        el.removeEventListener('error', onerror);
+        if (ok) { resolve(); } else { reject(new Error('audio failed')); }
+      }
+      function onend() { finish(true); }
+      function onerror() { finish(false); }
+      el.addEventListener('ended', onend);
+      el.addEventListener('error', onerror);
+    });
+  }
+
+  var OnlineTTS = {
+    cache: {},     // key -> HTMLAudioElement（复用重播，不产生新请求）
+    order: [],
+    limit: 80,
+    failed: {},    // provider 连续失败计数（用于自动降级）
+
+    buildUrl: function (text, lang, v) {
+      var t = encodeURIComponent(text);
+      if (v.provider === 'baidu') {
+        return 'https://fanyi.baidu.com/gettts?lan=' + (lang === 'zh' ? 'zh' : 'en') +
+               '&text=' + t + '&spd=' + (v.spd || 3) + '&source=web';
+      }
+      var u = 'https://dict.youdao.com/dictvoice?audio=' + t + '&le=' + (lang === 'zh' ? 'zh' : 'en');
+      if (lang !== 'zh') { u += '&type=' + (v.accent === 'uk' ? '1' : '2'); }
+      return u;
+    },
+
+    /** 取出（或新建）某段文本的 Audio 元素。 */
+    _el: function (text, lang, v) {
+      var key = v.id + '|' + text;
+      var el = this.cache[key];
+      if (!el) {
+        el = new Audio();
+        el.preload = 'auto';
+        el.src = this.buildUrl(text, lang, v);
+        this.cache[key] = el;
+      }
+      var i = this.order.indexOf(key);
+      if (i >= 0) { this.order.splice(i, 1); }
+      this.order.push(key);
+      while (this.order.length > this.limit) {
+        var old = this.order.shift();
+        try { var e = this.cache[old]; if (e) { e.pause(); e.src = ''; } } catch (err) { /* 忽略 */ }
+        delete this.cache[old];
+      }
+      return el;
+    },
+
+    /**
+     * 播放一段文本（长文本自动分片顺序播放）。
+     * @returns {Promise<boolean>} true 成功；false 表示在线音源不可用，调用方应降级。
+     */
+    speak: function (text, lang, voiceId, rate) {
+      var self = this;
+      var pool = onlineVoicesOf(lang);
+      var first = pool.filter(function (v) { return v.id === voiceId; })[0];
+      var queue = [];
+      if (first) { queue.push(first); }
+      pool.forEach(function (v) { if (queue.indexOf(v) < 0) { queue.push(v); } });
+
+      // 长文本分片：有道接口对长句不稳，统一按 provider 上限切段
+      var playOne = function (v) {
+        var maxChars = (v.provider === 'youdao') ? 10 : 120;
+        var chunks = chunkText(text, maxChars);
+        if (!chunks.length) { return Promise.resolve(true); }
+        var step = function (idx) {
+          if (idx >= chunks.length) { return Promise.resolve(true); }
+          var el = self._el(chunks[idx], lang, v);
+          try { el.currentTime = 0; } catch (e) { /* 忽略 */ }
+          try { el.playbackRate = Math.max(0.25, Math.min(2, Number(rate) || 1)); } catch (e) { /* 忽略 */ }
+          var p = el.play();
+          if (p && typeof p.then === 'function') {
+            return p.then(function () { return waitAudioEnd(el); })
+                    .then(function () { return step(idx + 1); },
+                          function () { return Promise.reject(new Error('play failed')); });
+          }
+          return waitAudioEnd(el).then(function () { return step(idx + 1); });
+        };
+        return step(0);
+      };
+
+      var attempt = function (idx) {
+        if (idx >= queue.length) { return Promise.resolve(false); }
+        return playOne(queue[idx]).then(function () { return true; },
+                                        function () { return attempt(idx + 1); });
+      };
+      return attempt(0);
+    },
+
+    stop: function () {
+      var self = this;
+      Object.keys(this.cache).forEach(function (k) {
+        try { var e = self.cache[k]; if (e) { e.pause(); } } catch (err) { /* 忽略 */ }
+      });
+    }
+  };
+
   var Speech = {
     supported: typeof window.speechSynthesis !== 'undefined',
     voice: null,
@@ -378,9 +560,10 @@
         if (chosen && self.voices.indexOf(chosen) === -1) self.voices.unshift(chosen);  // 保留用户已选的
         self._applyZhVoice();
 
-        state.speechReady = !!self.voice;
+        // 在线音源不依赖系统语音包，所以即使 getVoices() 为空也应视为"可用"
+        state.speechReady = this._onlineOn() ? true : !!self.voice;
         var w = $('speech-warn');
-        if (!self.voice && w) {
+        if (!self.voice && !this._onlineOn() && w) {
           w.textContent = '未检测到英文语音包，朗读可能不可用。请在系统中安装 English(US) TTS 语音。';
           w.classList.remove('hidden');
         }
@@ -408,6 +591,45 @@
       } catch (e) { /* 某些浏览器不支持该事件，忽略 */ }
       window.setTimeout(load, 300);
       window.setTimeout(load, 1500);
+    },
+
+    /** 发音来源：'online' 联网音源（默认，手机端靠它出声）/ 'system' 系统音色。 */
+    source: 'online',
+    /** 选中的英文在线音色 id（复用已有的 voice_uri 列存储，不新增表字段）。 */
+    onlineVoice: '',
+    /** 选中的中文在线音色 id（复用已有的 zh_voice_uri 列存储）。 */
+    onlineVoiceZh: '',
+
+    /** 是否走在线音源。 */
+    _onlineOn: function () {
+      return this.source === 'online';
+    },
+
+    /** 取某语言当前选中的在线音色；未选则用该语言默认音色。 */
+    _voiceOf: function (lang) {
+      return lang === 'zh' ? findOnlineVoice('zh', this.onlineVoiceZh)
+                           : findOnlineVoice('en', this.onlineVoice);
+    },
+
+    /** 设置发音来源：online / system（存 localStorage，不动云端表结构）。 */
+    setSource: function (s) {
+      this.source = (s === 'system') ? 'system' : 'online';
+      lsSet(LS_SOURCE, this.source);
+      return this.source;
+    },
+
+    /** 设置英文在线音色 id（存 localStorage，避免覆写系统音色偏好）。 */
+    setOnlineVoice: function (id) {
+      this.onlineVoice = id || '';
+      lsSet(LS_ONLINE_VOICE, this.onlineVoice);
+      return this.onlineVoice;
+    },
+
+    /** 设置中文在线音色 id（存 localStorage）。 */
+    setOnlineVoiceZh: function (id) {
+      this.onlineVoiceZh = id || '';
+      lsSet(LS_ONLINE_VOICE_ZH, this.onlineVoiceZh);
+      return this.onlineVoiceZh;
     },
 
     /** 候选里分数最高的本地女声（默认音色；云端音色不作默认，避免离线无声）。 */
@@ -723,6 +945,7 @@
         var nxt = this.items[nextIndex];
         gap = (nxt && typeof nxt === 'object' && nxt.lang === 'zh') ? ZH_PREROLL_MS : STEP_GAP_MS;
       }
+      var rate0 = u.rate;   // 交给 <audio> 的 playbackRate 用
 
       var started = false;   // 是否真的开始发声（onstart 或引擎处于朗读中）
       var ended = false;     // 是否已结束/出错
@@ -795,6 +1018,19 @@
           }
         }, WATCHDOG_MS);
       };
+      // —— 在线音源优先 ——
+      // 手机端系统没有 TTS 语音包时，改走联网朗读；成功则按原节奏推进下一段。
+      // 失败（限流 503/500、断网、接口变更）自动降级回上面的系统音色链路，
+      // 因此 PC 端已有的正常行为不会被破坏。
+      if (this._onlineOn()) {
+        OnlineTTS.speak(text, lang, this._voiceOf(lang), rate0).then(function (ok) {
+          if (ok) { advance(gap); return; }
+          if (self.stopped || self._gen !== gen0) return;
+          try { u.rate = rate0; } catch (e) { /* 忽略 */ }
+          speakOnce();   // 降级：系统音色
+        });
+        return;
+      }
       speakOnce();
     },
 
@@ -807,6 +1043,7 @@
       if (this.supported) {
         try { window.speechSynthesis.cancel(); } catch (e) { /* 忽略 */ }
       }
+      try { OnlineTTS.stop(); } catch (e) { /* 忽略 */ }
       this.current = null;
     },
 
@@ -1208,9 +1445,24 @@
       });
     }
 
+    var selSource = $('select-source');
+    if (selSource) {
+      selSource.addEventListener('change', function () {
+        Speech.setSource(this.value);
+        populateVoiceSelect();   // 在线/系统两套候选互斥，切换后重建下拉
+        toast(Speech._onlineOn() ? '发音来源：在线音源' : '发音来源：系统音色');
+      });
+    }
+
     var selVoice = $('select-voice');
     if (selVoice) {
       selVoice.addEventListener('change', function () {
+        if (Speech._onlineOn()) {
+          Speech.setOnlineVoice(this.value);
+          var v = Speech._voiceOf('en');
+          toast('已切换语音：' + (v ? v.label : '默认'));
+          return;
+        }
         Speech.setVoice(this.value);
         updateZhNote();
         if (Speech.voice) { toast('已切换语音：' + shortVoiceName(Speech.voice)); }
@@ -1220,6 +1472,12 @@
     var selZh = $('select-zh-voice');
     if (selZh) {
       selZh.addEventListener('change', function () {
+        if (Speech._onlineOn()) {
+          Speech.setOnlineVoiceZh(this.value);
+          var v = Speech._voiceOf('zh');
+          toast('汉字配音已设为 ' + (v ? v.label : '默认'));
+          return;
+        }
         Speech.setZhVoice(this.value);
         updateZhNote();
         toast(this.value ? '汉字配音已设为 ' + shortVoiceName(Speech.zhVoice) : '汉字配音恢复自动配对');
@@ -1239,15 +1497,22 @@
     if (btnTest) {
       btnTest.addEventListener('click', function () {
         var rep = Speech.zhRepeats || ZH_REPEAT;
-        var segs = Speech.zhVoice
+        var segs = (Speech._onlineOn() || Speech.zhVoice)
           ? [{ text: 'The pronunciation is', lang: 'en', step: 0 },
              { text: '汉', lang: 'zh', step: 0, repeat: rep },
              { text: 'The part of speech is noun', lang: 'en', step: 1 }]
           : [{ text: 'The pronunciation is hàn', lang: 'en', step: 0 },
              { text: 'The part of speech is noun', lang: 'en', step: 1 }];
         Speech.play(segs, {});
-        var en = Speech.voice ? shortVoiceName(Speech.voice) : '英文音色';
-        var zh = Speech.zhVoice ? shortVoiceName(Speech.zhVoice) : '（无中文音色，读拼音）';
+        var en, zh;
+        if (Speech._onlineOn()) {
+          var ve = Speech._voiceOf('en'), vz2 = Speech._voiceOf('zh');
+          en = ve ? ve.label : '英文音色';
+          zh = vz2 ? vz2.label : '中文音色';
+        } else {
+          en = Speech.voice ? shortVoiceName(Speech.voice) : '英文音色';
+          zh = Speech.zhVoice ? shortVoiceName(Speech.zhVoice) : '（无中文音色，读拼音）';
+        }
         toast('试听中：英文 ' + en + ' + 中文 ' + zh + '；听不到再换一个音色');
       });
     }
@@ -1263,11 +1528,31 @@
     $('btn-start').addEventListener('click', startFromSetup);
   }
 
-  /** 填充「朗读语音」下拉（只保留可正常朗读的候选，≤6 个，默认最清晰女声）。 */
+  /** 填充「朗读语音」下拉：在线模式给在线英文音色；系统模式沿用系统音色。 */
   function populateVoiceSelect() {
     var sel = $('select-voice');
-    if (!sel || !Speech.supported) return;
+    if (!sel) return;
     sel.innerHTML = '';
+
+    if (Speech._onlineOn()) {
+      // 在线音源：固定 4 个英文音色（2 女声 + 2 男声，清晰的播音腔）
+      var g = document.createElement('optgroup');
+      g.label = '在线英文音色';
+      onlineVoicesOf('en').forEach(function (v) {
+        var op = document.createElement('option');
+        op.value = v.id;
+        op.textContent = v.label;
+        g.appendChild(op);
+      });
+      sel.appendChild(g);
+      var d = defaultOnlineVoice('en');
+      sel.value = Speech.onlineVoice || (d ? d.id : '');
+      populateZhVoiceSelect();
+      updateZhNote();
+      return;
+    }
+
+    if (!Speech.supported) return;
     var auto = document.createElement('option');
     auto.value = '';
     auto.textContent = '自动' + (Speech.voice ? '（' + shortVoiceName(Speech.voice) + '）' : '（未检测到音色）');
@@ -1289,11 +1574,27 @@
     updateZhNote();
   }
 
-  /** 填充「汉字读音配音」下拉：自动配对 + 系统里的中文音色。 */
+  /** 填充「汉字读音配音」下拉：在线模式给在线中文音色；系统模式给系统中文音色。 */
   function populateZhVoiceSelect() {
     var sel = $('select-zh-voice');
     if (!sel) return;
     sel.innerHTML = '';
+
+    if (Speech._onlineOn()) {
+      var g = document.createElement('optgroup');
+      g.label = '在线中文音色';
+      onlineVoicesOf('zh').forEach(function (v) {
+        var op = document.createElement('option');
+        op.value = v.id;
+        op.textContent = v.label;
+        g.appendChild(op);
+      });
+      sel.appendChild(g);
+      var d = defaultOnlineVoice('zh');
+      sel.value = Speech.onlineVoiceZh || (d ? d.id : '');
+      return;
+    }
+
     var auto = document.createElement('option');
     auto.value = '';
     auto.textContent = '自动配对（' + (Speech.zhVoice ? shortVoiceName(Speech.zhVoice) : '无中文音色') + '）';
@@ -1316,6 +1617,12 @@
   function updateZhNote() {
     var el = $('zh-voice-note');
     if (!el) return;
+    if (Speech._onlineOn()) {
+      var vz = Speech._voiceOf('zh');
+      el.textContent = '汉字读音配音：' + (vz ? vz.label : '默认') +
+        '（联网合成，发音更准；接口不可用时自动退回系统音色）';
+      return;
+    }
     var g = Speech.voice ? voiceGender(Speech.voice) : 'f';
     var want = g === 'm' ? '男声' : '女声';
     if (Speech.zhVoice && Speech.zhMismatch) {
@@ -1343,6 +1650,15 @@
     if (n >= 1 && n <= 3) { Speech.zhRepeats = n; }
     var selRep = $('select-zh-repeat');
     if (selRep) { selRep.value = String(Speech.zhRepeats); }
+  }
+
+  /** 应用「发音来源 / 在线音色」偏好（读 localStorage，不动云端表）。 */
+  function applySourcePref() {
+    Speech.source = (lsGet(LS_SOURCE, 'online') === 'system') ? 'system' : 'online';
+    Speech.onlineVoice = lsGet(LS_ONLINE_VOICE, '');
+    Speech.onlineVoiceZh = lsGet(LS_ONLINE_VOICE_ZH, '');
+    var sel = $('select-source');
+    if (sel) { sel.value = Speech.source; }
   }
 
   /** 应用平台里保存的配字方式偏好。 */
@@ -1579,7 +1895,8 @@
     col.innerHTML = '';
     items.forEach(function (it) {
       var b = document.createElement('button');
-      b.className = 'opt opt-part';
+      // 双字及以上的部件单独加类，配合 CSS 自动缩字号，避免窄屏溢出遮挡
+      b.className = 'opt opt-part' + (String(it.text || '').length > 1 ? ' opt-part-multi' : '');
       b.type = 'button';
       b.textContent = it.text;
       b.setAttribute('data-part', it.text);
@@ -1639,7 +1956,10 @@
   }
 
   function playCardSpeech(card) {
-    var texts = buildSpeechTexts(card, !!Speech.zhVoice);
+    // 在线音源自带中文音色，不依赖系统是否安装中文语音包；
+    // 否则手机端 zhVoice 为空会误判成"无中文音色"，退回用英文腔读拼音（即发音不准的根因）。
+    var hasZh = Speech._onlineOn() ? true : !!Speech.zhVoice;
+    var texts = buildSpeechTexts(card, hasZh);
     var per = texts.length;
     Speech.play(texts, {
       onStep: function (i) {
@@ -2068,6 +2388,7 @@
     Speech.onVoicesReady = function () { populateVoiceSelect(); };
     Speech.onVoiceFail = function () { populateVoiceSelect(); };
     Speech.init();
+    applySourcePref();
     populateVoiceSelect();
     applyRatePref();
     bindHome();
@@ -2084,6 +2405,7 @@
       .then(function () {
         // 平台里的偏好（音色 / 语速 / 配字方式）加载后再刷一次界面
         applyRatePref();
+        applySourcePref();
         populateVoiceSelect();
         applyStylePref();
         updatePoolLabels();
