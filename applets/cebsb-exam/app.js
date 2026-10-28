@@ -34,6 +34,11 @@
   var LS_ONLINE_VOICE = 'zika.onlineVoice';      // 在线英文音色 id
   var LS_ONLINE_VOICE_ZH = 'zika.onlineVoiceZh';  // 在线中文音色 id
 
+  // 构建版本号：显示在测试配置页底部。
+  // 用途：确认手机上跑的是哪一版代码 —— 手机浏览器会顽固缓存 app.js，
+  // 曾经出现过"合并了新版本却完全没生效"的误判，有这个数字就能一眼确认。
+  var BUILD_VERSION = '1.3';
+
   /** 读 localStorage；不可用时返回默认值。 */
   function lsGet(k, d) {
     try {
@@ -505,6 +510,49 @@
       Object.keys(this.cache).forEach(function (k) {
         try { var e = self.cache[k]; if (e) { e.pause(); } } catch (err) { /* 忽略 */ }
       });
+    },
+
+    /**
+     * 自检用：真实拉一次音频并报告结果（不进入缓存，不影响正常播放）。
+     * 返回 { ok, err, url }。err 会把 <audio> 的 error.code 翻成人话，
+     * 因为「接口返回 0 字节 HTML」和「被 CORS 拦」「解码失败」都会表现成"没声音"，
+     * 只有 code 能区分，排查时必须看得到。
+     */
+    probe: function (text, lang, v) {
+      v = v || defaultOnlineVoice(lang);
+      if (!v) { return Promise.resolve({ ok: false, err: '没有可用音色', url: '' }); }
+      var url = this.buildUrl(text, lang, v);
+      return new Promise(function (resolve) {
+        var el = new Audio();
+        var done = false;
+        var timer = window.setTimeout(function () { finish(false, '12 秒内没有开始播放'); }, 12000);
+        function finish(ok, err) {
+          if (done) return;
+          done = true;
+          window.clearTimeout(timer);
+          try { el.pause(); el.src = ''; } catch (e) { /* 忽略 */ }
+          resolve({ ok: ok, err: err || '', url: url });
+        }
+        el.addEventListener('playing', function () { finish(true); }, { once: true });
+        el.addEventListener('error', function () {
+          var c = (el.error && el.error.code) || 0;
+          var map = {
+            1: '加载被中断',
+            2: '网络错误（可能被拦截或断网）',
+            3: '解码失败',
+            4: '地址无效或返回的不是音频（多半被接口的 Referer 校验挡了）'
+          };
+          finish(false, (map[c] || '未知错误') + ' code=' + c);
+        }, { once: true });
+        el.preload = 'auto';
+        el.src = url;
+        var p = el.play();
+        if (p && typeof p.catch === 'function') {
+          p.catch(function (e) {
+            finish(false, 'play() 被拒绝：' + ((e && e.name) || e));
+          });
+        }
+      });
     }
   };
 
@@ -654,20 +702,25 @@
     /** 设置发音来源：online / system（存 localStorage，不动云端表结构）。 */
     setSource: function (s) {
       this.source = (s === 'system') ? 'system' : 'online';
+      // 平台运行在 sandbox iframe（无 allow-same-origin）里，localStorage 会直接抛异常，
+      // 所以偏好以云端表 cebsb_settings 为准，localStorage 只作无害的镜像。
+      Store.set('source', this.source);
       lsSet(LS_SOURCE, this.source);
       return this.source;
     },
 
-    /** 设置英文在线音色 id（存 localStorage，避免覆写系统音色偏好）。 */
+    /** 设置英文在线音色 id（存云端表，避免覆写系统音色偏好字段）。 */
     setOnlineVoice: function (id) {
       this.onlineVoice = id || '';
+      Store.set('online_voice', this.onlineVoice);
       lsSet(LS_ONLINE_VOICE, this.onlineVoice);
       return this.onlineVoice;
     },
 
-    /** 设置中文在线音色 id（存 localStorage）。 */
+    /** 设置中文在线音色 id（存云端表）。 */
     setOnlineVoiceZh: function (id) {
       this.onlineVoiceZh = id || '';
+      Store.set('online_voice_zh', this.onlineVoiceZh);
       lsSet(LS_ONLINE_VOICE_ZH, this.onlineVoiceZh);
       return this.onlineVoiceZh;
     },
@@ -1153,7 +1206,9 @@
     settingsDefaults: function () {
       return {
         voice_uri: '', zh_voice_uri: '', rate: '0.6', zh_repeat: '2',
-        style: 'parts', mode: 'all', count: 100
+        style: 'parts', mode: 'all', count: 100,
+        // 在线音源偏好：沙箱内 localStorage 不可用，必须和系统音色一样走云端表
+        source: 'online', online_voice: '', online_voice_zh: ''
       };
     },
     /** 读偏好；未初始化时返回默认值。 */
@@ -1501,6 +1556,7 @@
       selSource.addEventListener('change', function () {
         Speech.setSource(this.value);
         populateVoiceSelect();   // 在线/系统两套候选互斥，切换后重建下拉
+        renderBuildVersion();
         toast(Speech._onlineOn() ? '发音来源：在线音源' : '发音来源：系统音色');
       });
     }
@@ -1576,7 +1632,55 @@
       });
     }
 
+    // 声音自检：把「实际能不能发声、用的哪个音色、失败原因」直接印在页面上。
+    // 加上它是因为「没声音 / 换音色无效」在手机上表现完全一样，看不到内部状态就没法定位。
+    var btnCheck = $('btn-sound-check');
+    if (btnCheck) {
+      btnCheck.addEventListener('click', function () { runSoundCheck(); });
+    }
+    renderBuildVersion();
+
     $('btn-start').addEventListener('click', startFromSetup);
+  }
+
+  /** 在配置页底部显示构建版本，用来确认手机上跑的是哪一版代码。 */
+  function renderBuildVersion() {
+    var el = $('build-version');
+    if (!el) return;
+    el.textContent = '版本 v' + BUILD_VERSION +
+      (Speech._onlineOn() ? '　在线音源' : '　系统音色');
+  }
+
+  /** 声音自检：联网拉一段真实音频并报告结果。 */
+  function runSoundCheck() {
+    var out = $('sound-check-out');
+    if (!out) return;
+    var parts = [];
+
+    if (!Speech._onlineOn()) {
+      parts.push('当前用的是系统音色');
+      parts.push('设备语音包：' + (Speech.voices.length ? Speech.voices.length + ' 个可用' : '一个都没检测到'));
+      parts.push('若完全没声音，说明手机没装 TTS 语音包，请把发音来源改成「在线音源」');
+      out.textContent = parts.join('；');
+      return;
+    }
+
+    var v = Speech._voiceOf('en') || defaultOnlineVoice('en');
+    parts.push('正在用 ' + (v ? v.label : '默认音色') + ' 联网试听…');
+    out.textContent = parts.join('；');
+
+    OnlineTTS.probe('Hello', 'en', v).then(function (r) {
+      if (r.ok) {
+        parts[0] = '联网朗读成功，应该能听到声音';
+        parts.push('当前音色：' + (v ? v.label : '默认'));
+        parts.push('若换音色仍听不出区别，说明命中了下表同一发音人（免密钥接口只有一个人声）');
+      } else {
+        parts[0] = '联网朗读失败：' + r.err;
+        parts.push('这通常是被接口的来源校验挡了，或网络被拦截');
+        parts.push('可临时把发音来源改成「系统音色」应急');
+      }
+      out.textContent = parts.join('；');
+    });
   }
 
   /** 填充「朗读语音」下拉：在线模式给在线英文音色；系统模式沿用系统音色。 */
@@ -1703,11 +1807,13 @@
     if (selRep) { selRep.value = String(Speech.zhRepeats); }
   }
 
-  /** 应用「发音来源 / 在线音色」偏好（读 localStorage，不动云端表）。 */
+  /** 应用「发音来源 / 在线音色」偏好（优先读云端表，localStorage 只作兜底）。 */
   function applySourcePref() {
-    Speech.source = (lsGet(LS_SOURCE, 'online') === 'system') ? 'system' : 'online';
-    Speech.onlineVoice = lsGet(LS_ONLINE_VOICE, '');
-    Speech.onlineVoiceZh = lsGet(LS_ONLINE_VOICE_ZH, '');
+    var src = Store.get('source');
+    if (src !== 'online' && src !== 'system') { src = lsGet(LS_SOURCE, 'online'); }
+    Speech.source = (src === 'system') ? 'system' : 'online';
+    Speech.onlineVoice = Store.get('online_voice') || lsGet(LS_ONLINE_VOICE, '');
+    Speech.onlineVoiceZh = Store.get('online_voice_zh') || lsGet(LS_ONLINE_VOICE_ZH, '');
     var sel = $('select-source');
     if (sel) { sel.value = Speech.source; }
   }
@@ -1946,8 +2052,7 @@
     col.innerHTML = '';
     items.forEach(function (it) {
       var b = document.createElement('button');
-      // 双字及以上的部件单独加类，配合 CSS 自动缩字号，避免窄屏溢出遮挡
-      b.className = 'opt opt-part' + (String(it.text || '').length > 1 ? ' opt-part-multi' : '');
+      b.className = 'opt opt-part';
       b.type = 'button';
       b.textContent = it.text;
       b.setAttribute('data-part', it.text);
@@ -2457,6 +2562,7 @@
         // 平台里的偏好（音色 / 语速 / 配字方式）加载后再刷一次界面
         applyRatePref();
         applySourcePref();
+        renderBuildVersion();
         populateVoiceSelect();
         applyStylePref();
         updatePoolLabels();
