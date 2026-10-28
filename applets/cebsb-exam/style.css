@@ -395,9 +395,7 @@ body {
   font-size: 12px; color: var(--z-ink-2); text-align: center; margin-bottom: 5px; letter-spacing: .5px;
 }
 .grid-parts { grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 0; }
-.opt-part { aspect-ratio: 1 / 1; font-size: 20px; border-radius: 9px; line-height: 1.1; }
-/* 双字及以上的部件自动缩小字号，防止在窄屏方格内溢出、压到相邻格子 */
-.opt-part-multi { font-size: 14px; letter-spacing: -0.5px; }
+.opt-part { aspect-ratio: 1 / 1; font-size: 20px; border-radius: 9px; }
 .opt-picked {
   background: var(--z-primary); border-color: var(--z-primary); color: #fff; font-weight: 700;
   box-shadow: 0 2px 6px rgba(46, 111, 94, .28);
@@ -638,10 +636,4 @@ body {
 @media (max-width: 400px) {
   .grid { grid-template-columns: repeat(5, 1fr); }
   .opt { font-size: 20px; }
-}
-
-/* 手机端拆字配字：左右两栏间距由 10px 加宽到 20px，
-   避免左栏最右一列部件（尤其双字部件）与右栏贴得太近产生遮挡 */
-@media (max-width: 480px) {
-  .parts { gap: 20px; }
 }

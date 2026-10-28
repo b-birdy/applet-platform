@@ -3,10 +3,19 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!--
+    关键修复（2026-10-29）：在线朗读接口只接受「不带 Referer」的请求。
+    实测百度 gettts 对来源站点有白名单：Referer 为本站域名时返回 0 字节的空 HTML，
+    <audio> 立刻触发 error，代码只能静默退回系统音色 ——
+    表现就是「无论选哪个音色，听到的都是同一个默认声音」。
+    same-origin = 跨站请求不发送 Referer，本站请求照常发送，副作用最小。
+    改这里之前请先确认：删掉后百度朗读会整条链路失效。
+  -->
+  <meta name="referrer" content="same-origin">
   <title>CEBSB汉英双拼练习</title>
   <link rel="icon" type="image/svg+xml" href="icon.svg">
   <meta name="theme-color" content="#2e6f5e">
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=1.3">
   <!-- 平台运行时：提供 window.applet.data(表名)，数据按登录用户隔离 -->
   <script src="/app-runtime.js"></script>
 </head>
@@ -115,6 +124,8 @@
               <option value="system">系统音色（用设备已装的语音包）</option>
             </select>
             <p class="hint">在线音源通过联网的朗读接口直接合成语音，手机端也能正常发声；若接口限流或断网，会自动退回系统音色。</p>
+            <button class="btn btn-ghost btn-sm" id="btn-sound-check" type="button">声音自检（排查听不到声音 / 换音色无效）</button>
+            <p class="hint" id="sound-check-out"></p>
           </div>
 
           <div class="field">
@@ -167,6 +178,7 @@
 
           <p class="warn" id="setup-warn"></p>
           <button class="btn btn-primary btn-block" id="btn-start">开始测试</button>
+          <p class="hint" id="build-version" style="text-align:center;margin-top:2px"></p>
         </div>
       </div>
     </section>
@@ -339,7 +351,9 @@
     <div class="toast hidden" id="toast"></div>
   </div>
 
-  <script src="cards.js"></script>
-  <script src="app.js"></script>
+  <!-- 加 ?v= 版本号强制刷新缓存：手机浏览器对 app.js 缓存很顽固，
+       不换 URL 会在合并新版本后仍执行旧代码（表现为「改了却完全没效果」） -->
+  <script src="cards.js?v=1.3"></script>
+  <script src="app.js?v=1.3"></script>
 </body>
 </html>

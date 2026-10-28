@@ -3,9 +3,9 @@
   "name": "CEBSB汉英双拼练习",
   "icon": "icon.svg",
   "entry": "index.html",
-  "version": "1.2.1",
+  "version": "1.3",
   "description": "听英语语音猜汉字的汉英双拼练习：内置 430 字词库，支持整字配字与拆字配字，支持在线音源发音（联网朗读，不依赖系统语音包；可切换引擎与语速/口音），成绩与偏好按登录用户隔离保存。",
-  "external_apis": [],
+  "external_apis": ["fanyi.baidu.com", "dict.youdao.com"],
   "tables": [
     {
       "name": "cebsb_stats",
@@ -38,7 +38,10 @@
         { "name": "zh_repeat", "type": "text" },
         { "name": "style", "type": "text" },
         { "name": "mode", "type": "text" },
-        { "name": "count", "type": "integer", "default": 100 }
+        { "name": "count", "type": "integer", "default": 100 },
+        { "name": "source", "type": "text" },
+        { "name": "online_voice", "type": "text" },
+        { "name": "online_voice_zh", "type": "text" }
       ]
     }
   ]
