@@ -166,6 +166,19 @@
     toastTimer = window.setTimeout(function () { el.classList.add('hidden'); }, 2200);
   }
 
+  /**
+   * 节流版提示：同一条消息在 ms 毫秒内只提示一次。
+   * 用于「在线音色不可用、已改用其他音色」这类会逐题触发的降级，避免刷屏。
+   */
+  var onceMarks = {};
+  function toastOnce(msg, ms) {
+    var now = Date.now();
+    var gap = (typeof ms === 'number') ? ms : 60000;
+    if (onceMarks[msg] && (now - onceMarks[msg]) < gap) return;
+    onceMarks[msg] = now;
+    toast(msg);
+  }
+
   /* ------------------------- 模态弹窗 ------------------------- */
   /**
    * 显示模态弹窗。
@@ -317,16 +330,30 @@
    * 有道对长英文例句会间歇性返回 500，故与百度互备；全部失败再退回系统音色。
    */
 
-  /** 在线音色目录：英文 4 个 / 中文 4 个（跨引擎 + 口音、语速组合）。 */
+  /*
+   * 在线音色目录：英文 4 个 / 中文 3 个。
+   *
+   * 【如实说明，勿再写成男声/女声】
+   * 免密钥的公开朗读接口（百度 gettts / 有道 dictvoice）每种语言只提供**一个**发音人，
+   * 没有可用的男女声切换参数。实测结论（2026-10-29）：
+   *   - 百度 `person` 参数无效：中文 person=0..4 返回的音频字节数完全一致（均为 11232），
+   *     英文各值字节数在 ±5% 内随机抖动且区间相互重叠 —— 都是同一个发音人，
+   *     差异只是 MP3 编码层面的字节抖动，听感上无法区分。
+   *   - 百度 `spd`（语速）确实有效：中文 spd=2/3/4/5/6 -> 12672/11232/10080/9216/8352 字节。
+   *   - 有道 `type=1/2` 可在英音/美音间切换，但接口限流明显（连续请求第二条起返回 500）。
+   *
+   * 所以下面的选项是「不同引擎 × 语速/口音」的组合，标签只描述真实存在的差异。
+   * 百度与有道是两套不同的 TTS 引擎，中文/英文音色本身确有听感区别；
+   * 同引擎内的两个选项则是语速快慢之别。
+   */
   var ONLINE_VOICES = [
-    { id: 'en-baidu-f1', lang: 'en', provider: 'baidu', spd: 3, label: '百度 · 英文女声（标准）' },
-    { id: 'en-baidu-f2', lang: 'en', provider: 'baidu', spd: 2, label: '百度 · 英文女声（舒缓）' },
-    { id: 'en-youdao-m1', lang: 'en', provider: 'youdao', accent: 'uk', label: '有道 · 英文男声（英音）' },
-    { id: 'en-youdao-m2', lang: 'en', provider: 'youdao', accent: 'us', label: '有道 · 英文男声（美音）' },
-    { id: 'zh-baidu-f1', lang: 'zh', provider: 'baidu', spd: 3, label: '百度 · 中文女声（标准）' },
-    { id: 'zh-baidu-f2', lang: 'zh', provider: 'baidu', spd: 2, label: '百度 · 中文女声（舒缓）' },
-    { id: 'zh-youdao-m1', lang: 'zh', provider: 'youdao', label: '有道 · 中文男声（标准）' },
-    { id: 'zh-youdao-m2', lang: 'zh', provider: 'youdao', label: '有道 · 中文男声（备用）' }
+    { id: 'en-baidu-std', lang: 'en', provider: 'baidu', spd: 3, label: '百度 · 英文（标准语速）' },
+    { id: 'en-baidu-slow', lang: 'en', provider: 'baidu', spd: 2, label: '百度 · 英文（慢速）' },
+    { id: 'en-youdao-uk', lang: 'en', provider: 'youdao', accent: 'uk', label: '有道 · 英文（英音）' },
+    { id: 'en-youdao-us', lang: 'en', provider: 'youdao', accent: 'us', label: '有道 · 英文（美音）' },
+    { id: 'zh-baidu-std', lang: 'zh', provider: 'baidu', spd: 3, label: '百度 · 中文（标准语速）' },
+    { id: 'zh-baidu-slow', lang: 'zh', provider: 'baidu', spd: 2, label: '百度 · 中文（慢速）' },
+    { id: 'zh-youdao', lang: 'zh', provider: 'youdao', label: '有道 · 中文' }
   ];
 
   /** 取某语言的在线音色列表。 */
@@ -386,6 +413,8 @@
     order: [],
     limit: 80,
     failed: {},    // provider 连续失败计数（用于自动降级）
+    lastUsed: '',        // 本次实际发声的音色 id
+    lastFallback: false, // 本次是否因首选不可用而用了替补
 
     buildUrl: function (text, lang, v) {
       var t = encodeURIComponent(text);
@@ -426,7 +455,9 @@
     speak: function (text, lang, voiceId, rate) {
       var self = this;
       var pool = onlineVoicesOf(lang);
-      var first = pool.filter(function (v) { return v.id === voiceId; })[0];
+      // 容错：既允许传音色 id 字符串，也允许直接传音色对象
+      var wantId = (voiceId && typeof voiceId === 'object') ? voiceId.id : voiceId;
+      var first = pool.filter(function (v) { return v.id === wantId; })[0];
       var queue = [];
       if (first) { queue.push(first); }
       pool.forEach(function (v) { if (queue.indexOf(v) < 0) { queue.push(v); } });
@@ -453,9 +484,18 @@
       };
 
       var attempt = function (idx) {
-        if (idx >= queue.length) { return Promise.resolve(false); }
-        return playOne(queue[idx]).then(function () { return true; },
-                                        function () { return attempt(idx + 1); });
+        if (idx >= queue.length) {
+          self.lastUsed = '';
+          self.lastFallback = false;
+          return Promise.resolve(false);
+        }
+        return playOne(queue[idx]).then(function () {
+          // 记录实际发声的音色：idx>0 说明首选音色不可用，播放的是替补。
+          // 调用方据此提示用户，避免"换了选项但听起来一样"却查不出原因。
+          self.lastUsed = queue[idx].id;
+          self.lastFallback = (idx > 0);
+          return true;
+        }, function () { return attempt(idx + 1); });
       };
       return attempt(0);
     },
@@ -1023,9 +1063,20 @@
       // 失败（限流 503/500、断网、接口变更）自动降级回上面的系统音色链路，
       // 因此 PC 端已有的正常行为不会被破坏。
       if (this._onlineOn()) {
-        OnlineTTS.speak(text, lang, this._voiceOf(lang), rate0).then(function (ok) {
-          if (ok) { advance(gap); return; }
+        // 注意：这里必须传音色 id 字符串，不能传音色对象，
+        // 否则 speak() 里 v.id === voiceId 永远为假，首选音色不生效（表现为换音色没反应）。
+        var ov = this._voiceOf(lang);
+        OnlineTTS.speak(text, lang, ov ? ov.id : '', rate0).then(function (ok) {
+          if (ok) {
+            // 首选音色不可用、实际用了替补时明确告知，
+            // 避免"换了选项却听着一样"而查不到原因。
+            if (ov && OnlineTTS.lastUsed && OnlineTTS.lastUsed !== ov.id) {
+              toastOnce('所选音色暂时不可用，已改用其他在线音色');
+            }
+            advance(gap); return;
+          }
           if (self.stopped || self._gen !== gen0) return;
+          toastOnce('在线音源不可用，已改用系统音色');
           try { u.rate = rate0; } catch (e) { /* 忽略 */ }
           speakOnce();   // 降级：系统音色
         });
@@ -1535,7 +1586,7 @@
     sel.innerHTML = '';
 
     if (Speech._onlineOn()) {
-      // 在线音源：固定 4 个英文音色（2 女声 + 2 男声，清晰的播音腔）
+      // 在线音源：不同引擎 × 语速/口音的组合（免密钥接口不提供男女声切换，故不标性别）
       var g = document.createElement('optgroup');
       g.label = '在线英文音色';
       onlineVoicesOf('en').forEach(function (v) {
