@@ -130,8 +130,8 @@ async function importCsv() {
 
     <el-table :data="users" stripe>
       <el-table-column prop="id" label="ID" width="70" />
-      <el-table-column prop="username" label="用户名" min-width="120" />
-      <el-table-column prop="nickname" label="昵称" min-width="100" />
+      <el-table-column prop="username" label="用户名" min-width="100" />
+      <el-table-column prop="nickname" label="昵称" min-width="80" />
       <el-table-column label="角色" width="110">
         <template #default="{ row }">
           <el-tag :type="row.role === 'superadmin' ? 'danger' : row.role === 'admin' ? 'warning' : 'info'" size="small">

@@ -68,7 +68,7 @@ describe('status transitions (D11)', () => {
     expect(r.status).toBe(200);
   });
 
-  it('enabled -> disabled ok, disabled -> testing 400', async () => {
+  it('enabled -> disabled ok, disabled -> testing ok (transitions fully liberalized)', async () => {
     const off = await SELF.fetch('https://x/api/admin/applets/demo7/status', {
       method: 'POST',
       headers: { 'content-type': 'application/json', cookie: adminCookie },
@@ -81,7 +81,7 @@ describe('status transitions (D11)', () => {
       headers: { 'content-type': 'application/json', cookie: adminCookie },
       body: JSON.stringify({ status: 'testing' }),
     });
-    expect(back.status).toBe(400);
+    expect(back.status).toBe(200);
   });
 
   it('unknown status 400', async () => {

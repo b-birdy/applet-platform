@@ -1,6 +1,6 @@
 // 小程序数据表管理：注册（含 D24 演进校验）、删除、白名单查询
 export type ManifestColumn = { name: string; type: 'text' | 'integer' | 'real' | 'blob'; required?: boolean; default?: unknown };
-export type ManifestTable = { name: string; columns: ManifestColumn[] };
+export type ManifestTable = { name: string; columns: ManifestColumn[]; description?: string };
 
 const COL_NAME_RE = /^[a-z][a-z0-9_]*$/;
 
@@ -33,18 +33,19 @@ export class ReservedColumnError extends Error {
   }
 }
 
-type Snapshot = Record<string, { columns: Record<string, string> }>;
+type Snapshot = Record<string, { columns: Record<string, string>; description?: string }>;
 
 function readSnapshot(raw: string | null | undefined): Snapshot {
   return raw ? JSON.parse(raw) : {};
 }
 
-export async function registerAppletTables(db: D1Database, appletId: string, tables: ManifestTable[]): Promise<void> {
+export async function registerAppletTables(db: D1Database, appletId: string, tables: ManifestTable[], opts?: { allowColumnShrink?: boolean }): Promise<void> {
   const key = `manifest.${appletId}`;
   const existingRow = await db.prepare(`SELECT value FROM t_settings WHERE key = ?`).bind(key).first<{ value: string }>();
   const snapshot = readSnapshot(existingRow?.value);
 
-  // D24：与快照比对——仅允许新增列；改类型/删列/删表拒绝
+  // D24：与快照比对——仅允许新增列；改类型/删列/删表拒绝。
+  // allowColumnShrink（版本切换专用）：管理员显式回退时允许清单少列——物理列与数据保留，仅不再写入
   for (const t of tables) {
     const prev = snapshot[t.name];
     if (prev) {
@@ -55,7 +56,7 @@ export async function registerAppletTables(db: D1Database, appletId: string, tab
         }
         prevCols.delete(col.name);
       }
-      if (prevCols.size > 0) {
+      if (prevCols.size > 0 && !opts?.allowColumnShrink) {
         throw new SchemaChangeError(`表 ${t.name} 删除列: ${[...prevCols].join(', ')}，禁止`);
       }
     }
@@ -70,10 +71,10 @@ export async function registerAppletTables(db: D1Database, appletId: string, tab
     await ensureTable(db, appletId, t, snapshot[t.name]);
   }
 
-  // 写新快照
+  // 写新快照（含表说明，供「应用数据」预览展示）
   const next: Snapshot = {};
   for (const t of tables) {
-    next[t.name] = { columns: Object.fromEntries(t.columns.map((c) => [c.name, c.type])) };
+    next[t.name] = { columns: Object.fromEntries(t.columns.map((c) => [c.name, c.type])), description: t.description };
   }
   await db
     .prepare(`INSERT INTO t_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`)

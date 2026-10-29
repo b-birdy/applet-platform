@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // 外壳布局：左栏两分区（通用/管理员）+ 可折叠 + 右侧视图
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useAuthStore } from '../stores/auth';
 import { useThemeStore, THEMES } from '../stores/theme';
@@ -12,6 +12,13 @@ const router = useRouter();
 
 const collapsed = ref(window.innerWidth < 768); // 手机窄屏默认折叠
 const themePanel = ref(false);
+const themeBtn = ref<HTMLElement | null>(null);
+// 主题面板：点击面板外任意区域自动收回（按钮与面板自身 .stop 排除，不影响其功能）
+function onDocClick() {
+  themePanel.value = false;
+}
+onMounted(() => document.addEventListener('click', onDocClick));
+onBeforeUnmount(() => document.removeEventListener('click', onDocClick));
 function pickTheme(id: string) {
   theme.setMode(id as any);
   // 同步到账号（与 Profile 页一致），失败静默（未登录等场景本地生效即可）
@@ -26,7 +33,7 @@ window.addEventListener('resize', () => {
 const userItems = [
   { path: '/', label: '首页', icon: '⌂' },
   { path: '/profile', label: '个人信息', icon: '☺' },
-  { path: '/my-apps', label: '我的应用', icon: '▦' },
+  { path: '/my-apps', label: '应用数据', icon: '▦' },
 ];
 const adminItems = [
   { path: '/admin/users', label: '用户管理', icon: '👥' },
@@ -75,11 +82,11 @@ async function logout() {
       </nav>
 
       <div class="foot">
-        <button class="nav as-btn" :title="'切换主题（当前：' + (THEMES.find((t) => t.id === theme.mode)?.name ?? theme.mode) + '）'" @click="themePanel = !themePanel">
+        <button ref="themeBtn" class="nav as-btn" :title="'切换主题（当前：' + (THEMES.find((t) => t.id === theme.mode)?.name ?? theme.mode) + '）'" @click.stop="themePanel = !themePanel">
           <span class="ico">🎨</span>
           <span v-show="!collapsed">主题</span>
         </button>
-        <div v-if="themePanel" class="theme-panel">
+        <div v-if="themePanel" class="theme-panel" @click.stop>
           <button
             v-for="t in THEMES"
             :key="t.id"

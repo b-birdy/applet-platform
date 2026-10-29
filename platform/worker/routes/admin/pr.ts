@@ -21,12 +21,11 @@ prRoutes.post('/api/admin/applets/:id/merge-pr', async (c) => {
   // 平台 commit author 固定 platform[bot]；合并本身走 GitHub 身份（token 属平台）
   await gh.mergePR(pr.pr_number, (await gh.getHeadSha(pr.branch)) ?? (await gh.getHeadSha('main'))!);
 
-  await c.env.DB.prepare(`UPDATE t_prs SET state = 'merged' WHERE applet_id = ? AND pr_number = ?`).bind(applet.id, pr.pr_number).run();
-
-  // 合并后同步：注册表对账 + 该应用内容刷新到 prod
+  // 先同步再落状态：同步失败时保持 open，下次同步的自愈/对账还能补拉（不留假合并）
   const syncEnv = { DB: c.env.DB, ASSETS: c.env.ASSETS, GITHUB: gh };
   await syncOnce(syncEnv);
   await refreshApplet(syncEnv, slug);
+  await c.env.DB.prepare(`UPDATE t_prs SET state = 'merged' WHERE applet_id = ? AND pr_number = ?`).bind(applet.id, pr.pr_number).run();
 
   const auth = c.get('auth');
   await logAudit(c.env.DB, { actor_type: 'user', actor_id: String(auth.userId), action: 'applet.merge_pr', target: slug, detail: { pr: pr.pr_number } });

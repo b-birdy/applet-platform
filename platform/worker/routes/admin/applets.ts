@@ -9,15 +9,15 @@ import { createAppletRemover } from '../../remover';
 import { getGithubClientForEnv } from '../../github-bind';
 
 const STATUSES = new Set(['testing', 'enabled', 'disabled']);
-// D11 状态机: testing⇄enabled⇄disabled；disabled→testing 非法
+// 状态任意互切（D11 放宽）：管理员显式操作，无需限制路径
 const TRANSITIONS: Record<string, Set<string>> = {
   testing: new Set(['enabled', 'disabled']),
   enabled: new Set(['testing', 'disabled']),
-  disabled: new Set(['enabled']),
+  disabled: new Set(['testing', 'enabled']),
 };
 
 type AppletEnv = {
-  Bindings: { DB: D1Database; ASSETS: R2Bucket };
+  Bindings: { DB: D1Database; ASSETS: R2Bucket; GITHUB_TOKEN?: string; GITHUB_OWNER?: string; GITHUB_REPO?: string; GITHUB?: unknown };
   Variables: { auth: AuthInfo };
 };
 
@@ -197,6 +197,100 @@ adminAppletRoutes.delete('/api/admin/applets/:id', async (c) => {
 // 功能健康检查（功能性测试模块的自动化部分）：
 // ① 静态规范 ② 运行时引用完整性（自包含 HTML 是否有外链残留/资源缺失）
 // ③ 数据层健康（清单表 ↔ 物理表一致、平台列存在）
+// 版本历史：main 分支上该 applet 目录的提交列表（message 即版本说明）
+adminAppletRoutes.get('/api/admin/applets/:id/versions', async (c) => {
+  const slug = c.req.param('id');
+  const applet = await c.env.DB.prepare(`SELECT id, path FROM t_applets WHERE path = ?`).bind(slug).first<{ id: number; path: string }>();
+  if (!applet) return c.json({ error: 'NOT_FOUND' }, 404);
+  const gh = getGithubClientForEnv(c.env);
+  try {
+    const commits = await gh.listCommits('main', `applets/${slug}`);
+    return c.json({ versions: commits });
+  } catch (e) {
+    return c.json({ error: 'GIT_LIST_FAILED', message: e instanceof Error ? e.message : String(e) }, 503);
+  }
+});
+
+// 切换版本：把 main 上该 applet 目录回退到指定 commit 的内容（生成回退提交，不 force-push、不改历史）
+// 数据安全：先跑 registerAppletTables 的演进规则——目标清单若要求改类型/删列/删表 → 拒绝（数据无法承载）
+adminAppletRoutes.post('/api/admin/applets/:id/switch-version', async (c) => {
+  const slug = c.req.param('id');
+  const applet = await c.env.DB.prepare(`SELECT id, path FROM t_applets WHERE path = ?`).bind(slug).first<{ id: number; path: string }>();
+  if (!applet) return c.json({ error: 'NOT_FOUND' }, 404);
+  const body = await c.req.json<{ sha?: string }>().catch(() => null);
+  if (!body?.sha || !/^[0-9a-f]{7,40}$/.test(body.sha)) return c.json({ error: 'BAD_REQUEST' }, 400);
+
+  const gh = getGithubClientForEnv(c.env);
+
+  // 1) 读目标 commit 上该目录的文件清单与内容
+  let targetFiles: Map<string, string>;
+  try {
+    const tree = await gh.getTree(body.sha);
+    const paths = tree.filter((e) => e.path.startsWith(`applets/${slug}/`)).map((e) => e.path);
+    if (paths.length === 0) return c.json({ error: 'VERSION_EMPTY', message: '目标版本中不存在该小程序的文件' }, 400);
+    targetFiles = new Map();
+    for (const p of paths) {
+      const raw = await gh.getContent(body.sha, p);
+      if (raw !== null) targetFiles.set(p, new TextDecoder().decode(raw));
+    }
+  } catch (e) {
+    return c.json({ error: 'GIT_READ_FAILED', message: e instanceof Error ? e.message : String(e) }, 503);
+  }
+  const manifestRaw = targetFiles.get(`applets/${slug}/applet.json`);
+  if (!manifestRaw) return c.json({ error: 'VERSION_MANIFEST_MISSING', message: '目标版本缺少 applet.json' }, 400);
+  let manifest: any;
+  try {
+    manifest = JSON.parse(manifestRaw);
+  } catch {
+    return c.json({ error: 'VERSION_MANIFEST_INVALID', message: '目标版本 applet.json 不是合法 JSON' }, 400);
+  }
+
+  // 2) 数据承载校验：改类型/删表 → 拒绝（数据无法承载）；清单少列放行（管理员显式回退，
+  //    物理列与数据保留，仅不再写入）
+  const { registerAppletTables, SchemaChangeError, ReservedColumnError } = await import('../../data');
+  try {
+    if (Array.isArray(manifest.tables)) {
+      await registerAppletTables(c.env.DB, slug, manifest.tables, { allowColumnShrink: true });
+    }
+  } catch (e) {
+    if (e instanceof SchemaChangeError || e instanceof ReservedColumnError) {
+      return c.json({ error: 'DATA_INCOMPATIBLE', message: `旧版本的数据表无法承载切换（${e.message}）。如确需切换，请先备份并清空相关数据。` }, 409);
+    }
+    throw e;
+  }
+
+  // 3) 以回退提交落到 main（正常 commit，历史保留、可再切回来）
+  const author = { name: 'platform[bot]', email: 'platform@noreply.applet-platform' };
+  const fileMap = new Map([...targetFiles.entries()].map(([p, content]) => {
+    const rel = p.slice(`applets/${slug}/`.length);
+    return [rel, content] as const;
+  }));
+  let newSha: string;
+  try {
+    // deleteDir 幂等清掉目录再写入目标版本的全部文件（覆盖删除场景：新版本有而旧版本没有的文件）
+    newSha = await gh.deleteDir('main', `applets/${slug}`, `revert applets/${slug} to ${body.sha.slice(0, 7)} (version switch)`, author);
+    if (fileMap.size > 0) {
+      const putMap = new Map([...fileMap.entries()].map(([rel, content]) => [`${slug}/${rel}`, content] as const));
+      newSha = await gh.putFiles('main', putMap as any, `revert applets/${slug} to ${body.sha.slice(0, 7)} (version switch)`, author, 'main');
+    }
+  } catch (e) {
+    return c.json({ error: 'GIT_SWITCH_FAILED', message: e instanceof Error ? e.message : String(e) }, 503);
+  }
+
+  // 4) 更新注册行 entry/display/version + 刷新 R2
+  let entry = manifest.entry ?? null;
+  let display = manifest.display === 'new_tab' ? 'new_tab' : 'embed';
+  const version = normalizeVersion(manifest.version);
+  await c.env.DB.prepare(`UPDATE t_applets SET entry = ?, display = ?, version = COALESCE(?, version) WHERE id = ?`)
+    .bind(entry, display, version, applet.id).run();
+  const { refreshApplet } = await import('../../sync');
+  await refreshApplet({ DB: c.env.DB, ASSETS: c.env.ASSETS, GITHUB: gh } as any, slug);
+
+  const auth = c.get('auth');
+  await logAudit(c.env.DB, { actor_type: 'user', actor_id: String(auth.userId), action: 'applet.version_switch', target: slug, detail: { sha: body.sha.slice(0, 7), commit: newSha } });
+  return c.json({ ok: true, commit: newSha });
+});
+
 adminAppletRoutes.get('/api/admin/applets/:id/health', async (c) => {
   const slug = c.req.param('id');
   const applet = await c.env.DB.prepare(`SELECT id, path, entry, status FROM t_applets WHERE path = ?`).bind(slug).first<{ id: number; path: string; entry: string | null; status: string }>();

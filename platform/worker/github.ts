@@ -140,8 +140,20 @@ export class GitHubClient {
     return newSha;
   }
 
-  async openPR(title: string, head: string, base: string): Promise<number> {
-    const { status, json } = await this.call('POST', '/pulls', { title, head, base, body: '' });
+  /** 列出分支上涉及某目录的提交（版本历史数据源）；commit message 即版本说明 */
+  async listCommits(branch: string, dir: string, limit = 30): Promise<{ sha: string; message: string; date: string; author: string }[]> {
+    const { status, json } = await this.call('GET', `/commits?sha=${encodeURIComponent(branch)}&path=${encodeURIComponent(dir)}&per_page=${limit}`);
+    if (status === 404) return [];
+    if (status !== 200) throw new Error(`listCommits: HTTP ${status}`);
+    return ((json as any[]) ?? []).map((c) => ({
+      sha: c.sha as string,
+      message: (c.commit?.message as string ?? '').split('\n')[0],
+      date: c.commit?.author?.date as string ?? '',
+      author: c.commit?.author?.name as string ?? '',
+    }));
+  }
+
+  async openPR(title: string, head: string, base: string): Promise<number> {    const { status, json } = await this.call('POST', '/pulls', { title, head, base, body: '' });
     if (status === 201) return (json as any).number as number;
     // GitHub 对"该 head 分支曾有历史 PR"返回 422（A pull request already exists ...）：
     // 复用该分支已有的 PR（含 closed——重开并返回），避免同分支永远无法再开 PR

@@ -65,8 +65,8 @@ onMounted(loadTasks);
 
 const TRANSITIONS: Record<string, { to: string; label: string }[]> = {
   testing: [{ to: 'enabled', label: '启用' }, { to: 'disabled', label: '停用' }],
-  enabled: [{ to: 'testing', label: '转回测试' }, { to: 'disabled', label: '停用' }],
-  disabled: [{ to: 'enabled', label: '启用' }],
+  enabled: [{ to: 'testing', label: '测试' }, { to: 'disabled', label: '停用' }],
+  disabled: [{ to: 'testing', label: '测试' }, { to: 'enabled', label: '启用' }],
 };
 
 async function changeStatus(a: Applet, to: string) {
@@ -227,14 +227,15 @@ function copyReport() {
 
 async function mergePR(a: Applet) {
   await ElMessageBox.confirm(
-    `合并「${a.name}」的 PR #${a.open_pr_number ?? '?'}？合并后平台将自动同步，应用保持「测试」状态，确认后再手动启用。`,
+    `合并「${a.name}」的 PR #${a.open_pr_number ?? '?'}？合并后平台将自动同步上线，小程序保持当前状态不变（测试/启用/停用均不变更）。`,
     '合并 PR',
     { type: 'warning', confirmButtonText: '合并', cancelButtonText: '取消' }
   );
   try {
     const res = await api<{ pr: number }>(`/api/admin/applets/${a.path}/merge-pr`, { method: 'POST' });
     ElMessage.success(`PR #${res.pr} 已合并并同步`);
-    await load();
+    // 2 秒后自动刷新（等平台同步完成），列表的「合并 PR」按钮消失
+    setTimeout(load, 2000);
   } catch (e) {
     ElMessage.error(e instanceof ApiError ? (e.code === 'NO_OPEN_PR' ? '没有待合并的 PR' : e.code) : '合并失败');
   }
@@ -297,8 +298,7 @@ function onWizardCreated() {
 }
 
 // 推进中任务：数量徽标 + 抽屉列表
-type TaskRow = { key: string; kind: 'create' | 'modify'; path: string; name: string; step: string; step_label: string; pr_number: number | null; started_at: string | null; aged: boolean };
-const tasksVisible = ref(false);
+type TaskRow = { key: string; kind: 'create' | 'modify'; path: string; name: string; step: string; step_label: string; pr_number: number | null; started_at: string | null; aged: boolean };const tasksVisible = ref(false);
 const tasks = ref<TaskRow[]>([]);
 const taskCount = ref(0);
 const tasksLoading = ref(false);
@@ -326,6 +326,48 @@ const stepTag: Record<string, { type: 'warning' | 'primary' | 'success'; label: 
   pr_open: { type: 'primary', label: 'PR 待合并' },
   done: { type: 'success', label: '已完成' },
 };
+
+// 版本切换：历史提交列表 + 回退确认（git 历史保留、数据承载校验在服务端）
+type VersionRow = { sha: string; message: string; date: string; author: string };
+const verVisible = ref(false);
+const verTarget = ref<Applet | null>(null);
+const versions = ref<VersionRow[]>([]);
+const verLoading = ref(false);
+
+async function openVersions(a: Applet) {
+  verTarget.value = a;
+  verVisible.value = true;
+  verLoading.value = true;
+  versions.value = [];
+  try {
+    const res = await api<{ versions: VersionRow[] }>(`/api/admin/applets/${a.path}/versions`);
+    versions.value = res.versions;
+  } catch (e) {
+    ElMessage.error(e instanceof ApiError ? e.code : '版本历史加载失败');
+  }
+  verLoading.value = false;
+}
+
+async function switchVersion(v: VersionRow) {
+  const a = verTarget.value!;
+  await ElMessageBox.confirm(
+    `将「${a.name}」的代码回退到 ${v.sha.slice(0, 7)}（${v.message}）？\n\n· 以一次新的回退提交完成，git 历史保留、随时可切回\n· 用户数据不受影响\n· 若旧版本的数据表无法承载现有数据结构，切换会被拒绝并说明原因`,
+    '版本切换',
+    { type: 'warning', confirmButtonText: '确认切换', cancelButtonText: '取消', customStyle: { whiteSpace: 'pre-line' } as any }
+  );
+  try {
+    await api(`/api/admin/applets/${a.path}/switch-version`, { method: 'POST', body: { sha: v.sha } });
+    ElMessage.success('已切换并同步上线');
+    verVisible.value = false;
+    setTimeout(load, 1500);
+  } catch (e) {
+    if (e instanceof ApiError && e.code === 'DATA_INCOMPATIBLE') {
+      ElMessageBox.alert((e as any).detail?.message ?? '旧版本的数据表无法承载切换', '切换失败', { type: 'error' });
+    } else {
+      ElMessage.error(e instanceof ApiError ? e.code : '切换失败');
+    }
+  }
+}
 </script>
 
 <template>
@@ -341,7 +383,7 @@ const stepTag: Record<string, { type: 'warning' | 'primary' | 'success'; label: 
     </header>
 
     <el-table :data="applets" stripe :row-class-name="({ row }: any) => statusRowClass[row.status] ?? ''">
-      <el-table-column label="应用" min-width="200">
+      <el-table-column label="应用" min-width="150">
         <template #default="{ row }">
           <div class="appname">
             <img v-if="row.icon && row.icon.startsWith('data:image')" class="ic img" :src="row.icon" alt="">
@@ -356,50 +398,62 @@ const stepTag: Record<string, { type: 'warning' | 'primary' | 'success'; label: 
           </div>
         </template>
       </el-table-column>
-      <el-table-column label="状态" width="100">
+      <el-table-column label="状态" width="90">
         <template #default="{ row }">
           <span class="st" :class="statusClass[row.status]"><i></i>{{ statusLabel[row.status] }}</span>
         </template>
       </el-table-column>
-      <el-table-column prop="authorized_users" label="授权用户" width="90" align="center" />
-      <el-table-column label="版本" width="70" align="center">
+      <el-table-column prop="authorized_users" label="授权用户" width="76" align="center" />
+      <el-table-column label="版本" width="64" align="center">
         <template #default="{ row }">
           <span class="muted">{{ row.version || '—' }}</span>
         </template>
       </el-table-column>
-      <el-table-column prop="tables" label="数据表" width="80" align="center" />
-      <el-table-column label="展示方式" width="90" align="center">
+      <el-table-column prop="tables" label="数据表" width="70" align="center" />
+      <el-table-column label="展示方式" width="84" align="center">
         <template #default="{ row }">
           <span class="muted">{{ displayLabel[(row as any).display] ?? '内嵌展示' }}</span>
         </template>
       </el-table-column>
-      <el-table-column label="PR" width="80" align="center">
+      <el-table-column label="PR" width="70" align="center">
         <template #default="{ row }">
           <el-tag v-if="row.open_prs" type="warning" size="small">待合并</el-tag>
           <span v-else class="muted">—</span>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="230" align="left" class-name="ops-col">
+      <el-table-column label="操作" width="440" align="left" class-name="ops-col">
         <template #default="{ row }">
           <div class="ops-row">
             <el-tooltip content="名称/图标/展示方式/专属配额" placement="top">
               <el-button size="small" @click="openEdit(row)">编辑</el-button>
             </el-tooltip>
+            <el-dropdown trigger="click" @command="(cmd: string) => handleRowCmd(row, cmd)">
+              <el-tooltip content="切换到另外两个状态之一" placement="top">
+                <el-button size="small">状态</el-button>
+              </el-tooltip>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item v-for="t in TRANSITIONS[row.status] ?? []" :key="t.to" :command="'status:' + t.to">
+                    切换到{{ t.label }}
+                  </el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
             <el-tooltip content="静态规范 + 运行时 + 数据层综合检查" placement="top">
               <el-button size="small" @click="checkReport(row)">健康报告</el-button>
             </el-tooltip>
             <el-tooltip content="该小程序的完整操作时间线" placement="top">
-              <el-button size="small" @click="openHistory(row)">历史</el-button>
+              <el-button size="small" @click="openHistory(row)">操作历史</el-button>
+            </el-tooltip>
+            <el-tooltip content="查看历史提交并回退到任一版本（git 历史保留，数据承载校验自动进行）" placement="top">
+              <el-button size="small" @click="openVersions(row)">版本切换</el-button>
             </el-tooltip>
             <el-button v-if="row.open_prs" size="small" type="primary" @click="mergePR(row)">合并 PR</el-button>
             <el-dropdown trigger="click" @command="(cmd: string) => handleRowCmd(row, cmd)">
               <el-button size="small">更多</el-button>
               <template #dropdown>
                 <el-dropdown-menu>
-                  <el-dropdown-item v-for="t in TRANSITIONS[row.status] ?? []" :key="t.to" :command="'status:' + t.to">
-                    状态 → {{ t.label }}
-                  </el-dropdown-item>
-                  <el-dropdown-item v-if="TRANSITIONS[row.status]?.length" divided command="authorize-user">授权用户…</el-dropdown-item>
+                  <el-dropdown-item command="authorize-user">授权用户…</el-dropdown-item>
                   <el-dropdown-item command="authorize-agent">授权 Agent…</el-dropdown-item>
                   <el-dropdown-item command="adopt-agent">新 Agent 接管…</el-dropdown-item>
                   <el-dropdown-item command="delete" divided>删除小程序…</el-dropdown-item>
@@ -412,7 +466,7 @@ const stepTag: Record<string, { type: 'warning' | 'primary' | 'success'; label: 
     </el-table>
 
     <!-- 新增向导 -->
-    <el-dialog v-model="wizardVisible" title="新增小程序（五步向导）" width="760px" destroy-on-close>
+    <el-dialog v-model="wizardVisible" title="新增小程序（三步向导）" width="760px" destroy-on-close>
       <AppletWizard @created="onWizardCreated" />
     </el-dialog>
 
@@ -573,6 +627,31 @@ const stepTag: Record<string, { type: 'warning' | 'primary' | 'success'; label: 
         </div>
       </div>
     </el-drawer>
+    <!-- 版本切换弹窗 -->
+    <el-dialog v-model="verVisible" :title="`版本切换 — ${verTarget?.name}`" width="640px">
+      <p class="hint" style="margin: 0 0 10px">
+        每行是一个历史版本（最近在上）。切换以一次新的回退提交完成：git 历史保留、用户数据不动；
+        若旧版本的数据表无法承载现有数据结构，切换会被拒绝并说明原因。
+      </p>
+      <div v-loading="verLoading" class="ver-list">
+        <el-empty v-if="!verLoading && versions.length === 0" description="没有历史版本（可能只有一个提交）" :image-size="60" />
+        <table v-else-if="!verLoading" class="ver-table">
+          <thead>
+            <tr><th style="width: 90px">版本</th><th>修改说明</th><th style="width: 110px">切换</th></tr>
+          </thead>
+          <tbody>
+            <tr v-for="v in versions" :key="v.sha">
+              <td class="mono">{{ v.sha.slice(0, 7) }}</td>
+              <td>
+                <div class="ver-msg">{{ v.message }}</div>
+                <div class="ver-meta">{{ v.author }} · {{ v.date?.replace('T', ' ').slice(0, 16) }}</div>
+              </td>
+              <td><el-button size="small" @click="switchVersion(v)">切换到此版本</el-button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -586,6 +665,12 @@ const stepTag: Record<string, { type: 'warning' | 'primary' | 'success'; label: 
 .task-path { font-size: 11px; color: var(--ink-3); font-family: ui-monospace, monospace; }
 .task-meta { display: flex; align-items: center; gap: 10px; margin-top: 6px; font-size: 12px; color: var(--ink-3); flex-wrap: wrap; }
 .aged-note { color: var(--warn); }
+.ver-list { max-height: 420px; overflow: auto; }
+.ver-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.ver-table th { text-align: left; font-size: 12px; color: var(--ink-3); font-weight: 500; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+.ver-table td { padding: 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.ver-msg { font-size: 13px; }
+.ver-meta { font-size: 11px; color: var(--ink-3); margin-top: 2px; }
 h1 { font-size: 17px; margin: 0; }
 .appname { display: flex; align-items: center; gap: 9px; }
 .appname .ic { width: 28px; height: 28px; border-radius: 7px; background: var(--accent-weak); color: var(--accent); display: flex; align-items: center; justify-content: center; font-size: 15px; }

@@ -62,6 +62,7 @@ const ACTION_ZH: Record<string, string> = {
   'agent.import_data': 'Agent 导入数据',
   'applet.prompt_copied': '复制提示词（任务开单）',
   'task.cancel': '作废任务',
+  'applet.version_switch': '切换版本',
 };
 
 // 操作人显示：user → 用户名（如「用户: admin」），agent → 认证名称（如「Agent: WorkBuddy 智能体（词汇整理）」）

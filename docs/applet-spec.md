@@ -50,7 +50,7 @@ applets/<你的小程序id>/
 - `id`（必需）：与目录名完全一致，否则 error `manifest.invalid`。
 - `name`（必需）：显示名。`icon`：emoji 或 SVG 文件路径。`entry`（必需）：入口 HTML。
 - `version`（可选）：两级版本号 `v<主>.<次>`（如 `v0.1`、`v1.0`、`v2.3`）。平台按此归一化落库并在管理端展示；每次功能迭代应递增版本（新功能递增次版本，重大改版递增主版本）。`1.0.0` / `1.0` 等写法会被归一化为 `v1.0`。
-- `tables`（必需，至少一张表）：声明你的数据表。表名列名须匹配 `^[a-z][a-z0-9_]*$`；列类型仅 `text | integer | real | blob`；`required` 标记必填；`default` 给默认值。**列名不得为平台托管列 `id` / `user_id` / `created_at`**（平台自动提供：行 id、归属用户、创建时间），声明任何之一都会被检查器以 error `manifest.table` 拦下；需要记录时间请用别的名字（如 `answered_at`）。
+- `tables`（必需，至少一张表）：声明你的数据表。表名列名须匹配 `^[a-z][a-z0-9_]*$`；列类型仅 `text | integer | real | blob`；`required` 标记必填；`default` 给默认值。每张表可加 `description` 字段（一句话说明该表的用途），会显示在用户侧「应用数据」预览中。**列名不得为平台托管列 `id` / `user_id` / `created_at`**（平台自动提供：行 id、归属用户、创建时间），声明任何之一都会被检查器以 error `manifest.table` 拦下；需要记录时间请用别的名字（如 `answered_at`）。
 - `external_apis`（可选）：允许访问的第三方 API 域名白名单。未声明的域名上 `fetch` 会报 error `security.external_api`。
 - `display`（可选）：展示方式。缺省 `"embed"`——点击宫格后在平台页面的内嵌框架中打开；设为 `"new_tab"` 则在新浏览器标签页打开（适合需要更大视野或独立工作区的应用）。
 - 表结构演进（升级版本时）：只允许**新增列**（平台自动 `ALTER TABLE ADD COLUMN`，存量数据保留）。改列类型、删列、删表会被拒绝（`SchemaChangeError`）；确需破坏性变更时删除小程序重建（数据清空，管理员红字确认）。

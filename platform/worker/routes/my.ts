@@ -76,6 +76,28 @@ myRoutes.get('/api/my/usage', async (c) => {
   return c.json({ applets });
 });
 
+// 数据表预览：每张表的说明与我的行数（不含任何数据内容，防风险）
+myRoutes.get('/api/my/tables/:slug', async (c) => {
+  const slug = c.req.param('slug');
+  if (!await requireAuthorizedApplet(c, slug)) return c.json({ error: 'APPLET_FORBIDDEN' }, 403);
+  const auth = c.get('auth') as AuthInfo;
+  const row = await c.env.DB.prepare(`SELECT value FROM t_settings WHERE key = ?`).bind(`manifest.${slug}`).first<{ value: string }>();
+  if (!row?.value) return c.json({ tables: [] });
+  const manifest = JSON.parse(row.value) as Record<string, { columns: Record<string, string>; description?: string }>;
+  const tables: { name: string; description: string; rows: number }[] = [];
+  for (const [name, def] of Object.entries(manifest)) {
+    const tbl = appletTable(slug, name);
+    const count = (await c.env.DB.prepare(`SELECT COUNT(*) AS n FROM ${tbl} WHERE user_id = ?`).bind(auth.userId).first()) as { n: number } | null;
+    const colNames = Object.keys(def.columns);
+    tables.push({
+      name,
+      description: def.description || `包含 ${colNames.length} 个字段：${colNames.join('、')}`,
+      rows: count?.n ?? 0,
+    });
+  }
+  return c.json({ tables });
+});
+
 // 导出本人数据（JSON 附件下载）
 myRoutes.get('/api/my/export', async (c) => {
   const auth = c.get('auth') as AuthInfo;
