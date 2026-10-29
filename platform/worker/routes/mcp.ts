@@ -214,11 +214,15 @@ mcpAdminRoutes.put('/api/admin/settings', async (c) => {
 mcpAdminRoutes.get('/api/admin/logs', async (c) => {
   const actor = c.req.query('actor');
   const action = c.req.query('action');
-  const limit = Math.min(Number(c.req.query('limit') || 100), 500);
+  const limit = Math.min(Number(c.req.query('limit') || 20), 500);
+  const offset = Math.max(Number(c.req.query('offset') || 0), 0);
   // actor 名字解析：user → username，agent → 认证名称（前端直接显示）
   let sql = `SELECT al.id, al.actor_type, al.actor_id, al.action, al.target, al.detail, al.at,
        u.username AS user_name, ag.name AS agent_name, ag.fingerprint AS agent_fingerprint
      FROM t_audit_logs al
+     LEFT JOIN t_users u ON al.actor_type = 'user' AND u.id = CAST(al.actor_id AS INTEGER)
+     LEFT JOIN t_agents ag ON al.actor_type = 'agent' AND ag.id = CAST(al.actor_id AS INTEGER)`;
+  let countSql = `SELECT COUNT(*) AS n FROM t_audit_logs al
      LEFT JOIN t_users u ON al.actor_type = 'user' AND u.id = CAST(al.actor_id AS INTEGER)
      LEFT JOIN t_agents ag ON al.actor_type = 'agent' AND ag.id = CAST(al.actor_id AS INTEGER)`;
   const conds: string[] = [];
@@ -228,11 +232,16 @@ mcpAdminRoutes.get('/api/admin/logs', async (c) => {
     binds.push(`%${actor}%`, `%${actor}%`, `%${actor}%`, actor);
   }
   if (action) { conds.push(`al.action LIKE ?`); binds.push(`%${action}%`); }
-  if (conds.length) sql += ` WHERE ${conds.join(' AND ')}`;
-  sql += ` ORDER BY al.id DESC LIMIT ?`;
-  binds.push(limit);
+  if (conds.length) {
+    const where = ` WHERE ${conds.join(' AND ')}`;
+    sql += where;
+    countSql += where;
+  }
+  sql += ` ORDER BY al.id DESC LIMIT ? OFFSET ?`;
+  binds.push(limit, offset);
   const rows = (await c.env.DB.prepare(sql).bind(...binds).all() as any).results;
-  return c.json({ logs: rows });
+  const total = (await c.env.DB.prepare(countSql).bind(...binds.slice(0, binds.length - 2)).first<{ n: number }>())?.n ?? 0;
+  return c.json({ logs: rows, total });
 });
 
 mcpAdminRoutes.get('/api/admin/sync', async (c) => {

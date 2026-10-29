@@ -45,6 +45,24 @@ const adminItems = [
 
 const isAdmin = computed(() => auth.isAdmin);
 
+// 管理员红点：待合并 PR 数（打开布局时拉一次，路由切换到管理页时刷新）
+const openPrs = ref(0);
+async function loadOverview() {
+  if (!auth.isAdmin) return;
+  try {
+    const res = await fetch('/api/admin/overview', { credentials: 'include' });
+    if (res.ok) {
+      const json = await res.json();
+      openPrs.value = json.openPrs ?? 0;
+    }
+  } catch { /* 静默 */ }
+}
+onMounted(loadOverview);
+import { watch } from 'vue';
+watch(() => route.path, (p) => {
+  if (p.startsWith('/admin')) loadOverview();
+});
+
 async function logout() {
   await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
   auth.me = null;
@@ -74,9 +92,11 @@ async function logout() {
         <template v-if="isAdmin">
           <div class="sec" v-show="!collapsed">管理员</div>
           <router-link v-for="item in adminItems" :key="item.path" :to="item.path" class="nav"
-            :class="{ on: route.path.startsWith(item.path) }">
+            :class="{ on: route.path.startsWith(item.path) }"
+            @click="isMobile && (collapsed = true)">
             <span class="ico">{{ item.icon }}</span>
             <span v-show="!collapsed">{{ item.label }}</span>
+            <span v-if="item.path === '/admin/applets' && openPrs > 0" class="red-dot" :title="`${openPrs} 个待合并 PR`"></span>
           </router-link>
         </template>
       </nav>

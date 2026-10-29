@@ -13,6 +13,9 @@ type Log = {
 };
 
 const logs = ref<Log[]>([]);
+const total = ref(0);
+const page = ref(1);
+const PAGE_SIZE = 20;
 const actor = ref('');
 const action = ref('');
 const loading = ref(true);
@@ -22,11 +25,19 @@ async function load() {
   const params = new URLSearchParams();
   if (actor.value) params.set('actor', actor.value);
   if (action.value) params.set('action', action.value);
-  const res = await api<{ logs: Log[] }>(`/api/admin/logs?${params}`);
+  params.set('limit', String(PAGE_SIZE));
+  params.set('offset', String((page.value - 1) * PAGE_SIZE));
+  const res = await api<{ logs: Log[]; total: number }>(`/api/admin/logs?${params}`);
   logs.value = res.logs;
+  total.value = res.total ?? res.logs.length;
   loading.value = false;
 }
 onMounted(load);
+
+function changePage(p: number) {
+  page.value = p;
+  load();
+}
 
 const ACTION_ZH: Record<string, string> = {
   'login.success': '登录成功',
@@ -90,8 +101,8 @@ function fmtDetail(d: string | null): string {
     <header class="head">
       <h1>操作日志</h1>
       <div class="ops">
-        <el-input v-model="actor" placeholder="按操作人筛选" clearable style="width: 160px" @change="load" @clear="load" />
-        <el-input v-model="action" placeholder="按操作类型筛选" clearable style="width: 180px" @change="load" @clear="load" />
+        <el-input v-model="actor" placeholder="按操作人筛选" clearable style="width: 160px" @change="page = 1; load()" @clear="page = 1; load()" />
+        <el-input v-model="action" placeholder="按操作类型筛选" clearable style="width: 180px" @change="page = 1; load()" @clear="page = 1; load()" />
       </div>
     </header>
 
@@ -141,6 +152,17 @@ function fmtDetail(d: string | null): string {
       </div>
       <el-empty v-if="!loading && logs.length === 0" description="暂无日志" />
     </div>
+
+    <!-- 翻页栏（桌面/移动共用） -->
+    <div class="pager" v-if="total > PAGE_SIZE">
+      <el-pagination
+        layout="prev, pager, next, total"
+        :total="total"
+        :page-size="PAGE_SIZE"
+        :current-page="page"
+        @current-change="changePage"
+      />
+    </div>
   </div>
 </template>
 
@@ -164,4 +186,5 @@ h1 { font-size: 17px; margin: 0; }
 .card-row { display: flex; gap: 8px; margin-top: 2px; align-items: baseline; }
 .card-row .k { font-size: 11px; color: var(--ink-3); flex: none; width: 30px; }
 .card-row .detail, .card-row .mono { word-break: break-all; min-width: 0; }
+.pager { display: flex; justify-content: flex-end; margin-top: 12px; }
 </style>

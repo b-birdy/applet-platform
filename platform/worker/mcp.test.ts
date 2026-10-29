@@ -419,6 +419,26 @@ describe('logs endpoint actor-name join', () => {
     expect(agentRow.agent_name).toBe('log-agent');
     expect(agentRow.agent_fingerprint).toBe('fp-log');
   });
+
+  it('paginates: limit/offset slice the list, total reflects full count', async () => {
+    // beforeEach 清空审计——自产 3 条（code_created × 3）
+    for (let i = 0; i < 3; i++) await makeAccessCode();
+    const all = await SELF.fetch('https://x/api/admin/logs?limit=500', { headers: { cookie: adminCookie } });
+    const allJson: any = await all.json();
+    const grandTotal = allJson.total;
+    expect(grandTotal).toBeGreaterThanOrEqual(3);
+
+    const page1 = await SELF.fetch('https://x/api/admin/logs?limit=1&offset=0', { headers: { cookie: adminCookie } });
+    const p1: any = await page1.json();
+    expect(p1.logs).toHaveLength(1);
+    expect(p1.total).toBe(grandTotal);
+    // 第一页第一条应是全局最新（id DESC）
+    expect(p1.logs[0].id).toBe(allJson.logs[0].id);
+
+    const page2 = await SELF.fetch('https://x/api/admin/logs?limit=1&offset=1', { headers: { cookie: adminCookie } });
+    const p2: any = await page2.json();
+    expect(p2.logs[0].id).toBe(allJson.logs[1].id);
+  });
 });
 
 describe('tools', () => {

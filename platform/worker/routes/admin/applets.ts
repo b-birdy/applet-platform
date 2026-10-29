@@ -3,7 +3,7 @@
 import { Hono } from 'hono';
 import { requireRole, requireAuth, type AuthInfo } from '../../auth';
 import { logAudit } from '../../audit';
-import { dropAppletTables, normalizeVersion } from '../../data';
+import { dropAppletTables, normalizeVersion, appletTable } from '../../data';
 import { checkApplet } from '../../checker';
 import { createAppletRemover } from '../../remover';
 import { getGithubClientForEnv } from '../../github-bind';
@@ -39,7 +39,13 @@ adminAppletRoutes.get('/api/admin/applets', async (c) => {
     `SELECT a.id, a.name, a.path, a.icon, a.status, a.entry, a.display, a.created_at, a.version,
        (SELECT COUNT(*) FROM t_applet_acls acl WHERE acl.applet_id = a.id AND acl.allowed = 1) AS authorized_users,
        (SELECT COUNT(*) FROM t_prs pr WHERE pr.applet_id = a.id AND pr.state = 'open') AS open_prs,
-       (SELECT pr_number FROM t_prs pr WHERE pr.applet_id = a.id AND pr.state = 'open' LIMIT 1) AS open_pr_number
+       (SELECT pr_number FROM t_prs pr WHERE pr.applet_id = a.id AND pr.state = 'open' LIMIT 1) AS open_pr_number,
+       -- 开发者：该应用的归属 agent 名；无归属 agent（纯同步发现）时为 NULL
+       (SELECT ag.name FROM t_agent_applets aa JOIN t_agents ag ON ag.id = aa.agent_id
+         WHERE aa.applet_id = a.id ORDER BY CASE aa.source WHEN 'submitted' THEN 0 ELSE 1 END, aa.agent_id LIMIT 1) AS developer_agent,
+       -- 授权的首个用户：昵称优先、用户名兜底
+       (SELECT COALESCE(NULLIF(u.nickname, ''), u.username) FROM t_applet_acls acl2 JOIN t_users u ON u.id = acl2.user_id
+         WHERE acl2.applet_id = a.id AND acl2.allowed = 1 ORDER BY acl2.rowid LIMIT 1) AS developer_user
      FROM t_applets a ORDER BY a.id`
   ).all() as any).results as any[];
 
@@ -197,6 +203,46 @@ adminAppletRoutes.delete('/api/admin/applets/:id', async (c) => {
 // 功能健康检查（功能性测试模块的自动化部分）：
 // ① 静态规范 ② 运行时引用完整性（自包含 HTML 是否有外链残留/资源缺失）
 // ③ 数据层健康（清单表 ↔ 物理表一致、平台列存在）
+// 平台总览（侧栏红点 + 应用使用统计的数据源）：一次聚合，避免每个页面各查一遍
+adminAppletRoutes.get('/api/admin/overview', async (c) => {
+  const db = c.env.DB;
+  const openPrs = (await db.prepare(`SELECT COUNT(*) AS n FROM t_prs WHERE state = 'open'`).first<{ n: number }>())?.n ?? 0;
+  const pendingAgents = (await db.prepare(`SELECT COUNT(*) AS n FROM t_agents WHERE status = 'pending'`).first<{ n: number }>())?.n ?? 0;
+  const activeTasks = (await db.prepare(
+    `SELECT COUNT(DISTINCT al.target) AS n FROM t_audit_logs al
+     WHERE al.action = 'applet.prompt_copied' AND al.at >= datetime('now', '-14 days')
+       AND al.target NOT IN (SELECT target FROM t_audit_logs WHERE action = 'task.cancel' AND target IS NOT NULL)`
+  ).first<{ n: number }>())?.n ?? 0;
+  // 30 天使用统计：宫格打开次数（按 applet 聚合，去重用户数）
+  const usage = (await db.prepare(
+    `SELECT target AS path, COUNT(*) AS opens, COUNT(DISTINCT actor_id) AS users
+     FROM t_audit_logs WHERE action = 'applet.open' AND at >= datetime('now', '-30 days')
+     GROUP BY target ORDER BY opens DESC`
+  ).all() as any).results;
+  return c.json({ openPrs, pendingAgents, activeTasks, usage });
+});
+
+// 数据快照备份：把该 applet 全部用户的全部表导出到 R2（版本切换前自动调用，也可手动）
+adminAppletRoutes.post('/api/admin/applets/:id/backup', async (c) => {
+  const slug = c.req.param('id');
+  const applet = await c.env.DB.prepare(`SELECT id, path FROM t_applets WHERE path = ?`).bind(slug).first<{ id: number; path: string }>();
+  if (!applet) return c.json({ error: 'NOT_FOUND' }, 404);
+
+  const snap = await c.env.DB.prepare(`SELECT value FROM t_settings WHERE key = ?`).bind(`manifest.${slug}`).first<{ value: string }>();
+  const tables = snap?.value ? Object.keys(JSON.parse(snap.value)) : [];
+  const data: Record<string, unknown[]> = {};
+  for (const t of tables) {
+    const tbl = appletTable(slug, t);
+    data[t] = ((await c.env.DB.prepare(`SELECT * FROM ${tbl}`).all()) as any).results;
+  }
+  const body = JSON.stringify({ applet: slug, backed_up_at: new Date().toISOString(), tables: data }, null, 2);
+  const key = `backups/${slug}/${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+  await c.env.ASSETS.put(key, body);
+  const auth = c.get('auth');
+  await logAudit(c.env.DB, { actor_type: 'user', actor_id: String(auth.userId), action: 'applet.backup', target: slug, detail: { key, tables: tables.length } });
+  return c.json({ ok: true, key, bytes: body.length });
+});
+
 // 版本历史：main 分支上该 applet 目录的提交列表（message 即版本说明）
 adminAppletRoutes.get('/api/admin/applets/:id/versions', async (c) => {
   const slug = c.req.param('id');
@@ -257,6 +303,21 @@ adminAppletRoutes.post('/api/admin/applets/:id/switch-version', async (c) => {
       return c.json({ error: 'DATA_INCOMPATIBLE', message: `旧版本的数据表无法承载切换（${e.message}）。如确需切换，请先备份并清空相关数据。` }, 409);
     }
     throw e;
+  }
+
+  // 2.5) 自动备份：切换前把全部数据快照到 R2 backups/ 前缀（失败不阻断切换——备份是尽力而为，
+  //      切换本身经数据承载校验已保证不破坏表结构）
+  try {
+    const snapRow = await c.env.DB.prepare(`SELECT value FROM t_settings WHERE key = ?`).bind(`manifest.${slug}`).first<{ value: string }>();
+    const tables = snapRow?.value ? Object.keys(JSON.parse(snapRow.value)) : [];
+    const data: Record<string, unknown[]> = {};
+    for (const t of tables) {
+      data[t] = ((await c.env.DB.prepare(`SELECT * FROM ${appletTable(slug, t)}`).all()) as any).results;
+    }
+    const backupBody = JSON.stringify({ applet: slug, backed_up_at: new Date().toISOString(), reason: `version-switch ${body.sha.slice(0, 7)}`, tables: data }, null, 2);
+    await c.env.ASSETS.put(`backups/${slug}/${new Date().toISOString().replace(/[:.]/g, '-')}.json`, backupBody);
+  } catch (e) {
+    console.error(`backup before switch ${slug} failed:`, e);
   }
 
   // 3) 以回退提交落到 main（正常 commit，历史保留、可再切回来）

@@ -76,6 +76,17 @@ myRoutes.get('/api/my/usage', async (c) => {
   return c.json({ applets });
 });
 
+// 打点：用户从宫格打开小程序（使用统计的数据源；写审计聚合，零新表）
+myRoutes.post('/api/my/applet-open', async (c) => {
+  const auth = c.get('auth') as AuthInfo;
+  const body = await c.req.json().catch((): { appletId?: string } | null => null);
+  const slug = body?.appletId ?? '';
+  if (!slug) return c.json({ error: 'BAD_REQUEST' }, 400);
+  // 只要求已登录（宫格对 testing/disabled 的预览也是有效使用；无需授权校验，统计口径从宽）
+  await logAudit(c.env.DB, { actor_type: 'user', actor_id: String(auth.userId), action: 'applet.open', target: slug });
+  return c.json({ ok: true });
+});
+
 // 数据表预览：每张表的说明与我的行数（不含任何数据内容，防风险）
 myRoutes.get('/api/my/tables/:slug', async (c) => {
   const slug = c.req.param('slug');

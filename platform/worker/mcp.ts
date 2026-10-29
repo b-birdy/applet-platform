@@ -201,10 +201,19 @@ async function submitApplet(env: McpEnv, agent: { id: number; name: string }, ar
   }
 
   const author = { name: `applet-agent[${agent.id}]`, email: `${agent.name}@agents.noreply.applet-platform` };
+  // 版本发布说明：清单 changelog 优先（get_spec 已约定），缺省回退通用文案
+  let changelog = '';
+  try {
+    const m = JSON.parse(files['applet.json']);
+    if (typeof m.changelog === 'string' && m.changelog.trim()) changelog = m.changelog.trim().split('\n')[0];
+  } catch { /* checker 已验过清单 */ }
+  const commitMsg = changelog
+    ? `submit applet ${appletId} by agent ${agent.id}: ${changelog}`
+    : `submit applet ${appletId} by agent ${agent.id}`;
   let newBranchSha: string;
   let prNumber: number;
   try {
-    newBranchSha = await gh.putFiles(`applet/${appletId}`, fileMap, `submit applet ${appletId} by agent ${agent.id}`, author);
+    newBranchSha = await gh.putFiles(`applet/${appletId}`, fileMap, commitMsg, author);
 
     // D28: 已有 open PR 则同分支更新（不新开）
     const open = await env.DB.prepare(`SELECT pr_number FROM t_prs WHERE applet_id = ? AND state = 'open'`).bind(appletRowId).first<{ pr_number: number }>();
@@ -218,7 +227,7 @@ async function submitApplet(env: McpEnv, agent: { id: number; name: string }, ar
         // 出路：删分支引用 → 重放 putFiles（新提交）→ 再开 PR（新分支引用无历史）。
         if (!(e instanceof Error) || !/422/.test(e.message)) throw e;
         await gh.deleteBranch(`applet/${appletId}`);
-        await gh.putFiles(`applet/${appletId}`, fileMap, `submit applet ${appletId} by agent ${agent.id} (branch rebuilt)`, author);
+        await gh.putFiles(`applet/${appletId}`, fileMap, `${commitMsg} (branch rebuilt)`, author);
         prNumber = await gh.openPR(`Applet: ${displayName} (${appletId})`, `applet/${appletId}`, 'main');
       }
     }

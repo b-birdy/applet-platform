@@ -33,6 +33,8 @@ onMounted(async () => {
 function open(a: Applet) {
   // admin 可预览 testing/disabled（iframe 路径由 worker 鉴权），普通用户仅 enabled
   if (!(auth.isAdmin || a.status === 'enabled')) return;
+  // 使用统计打点（失败静默）
+  fetch('/api/my/applet-open', { method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ appletId: a.path }) }).catch(() => {});
   if ((a as any).display === 'new_tab') {
     // 新标签页：仍然走平台的 /app/ 路径（鉴权+token 注入逻辑相同）
     window.open(`/app/${a.path}/`, '_blank');

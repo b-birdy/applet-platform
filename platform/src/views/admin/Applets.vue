@@ -320,6 +320,22 @@ async function cancelTask(t: TaskRow) {
   } catch { /* 静默 */ }
 }
 
+// 平台总览：30 天使用统计（宫格打开打点聚合）+ PR 红点数
+type UsageRow = { path: string; opens: number; users: number };
+const usageVisible = ref(false);
+const usageRows = ref<UsageRow[]>([]);
+const usageLoading = ref(false);
+
+async function openUsage() {
+  usageVisible.value = true;
+  usageLoading.value = true;
+  try {
+    const res = await api<{ usage: UsageRow[] }>('/api/admin/overview');
+    usageRows.value = res.usage;
+  } catch { /* 静默 */ }
+  usageLoading.value = false;
+}
+
 const kindLabel: Record<string, string> = { create: '新建', modify: '修改' };
 const stepTag: Record<string, { type: 'warning' | 'primary' | 'success'; label: string }> = {
   waiting_submit: { type: 'warning', label: '等待提交' },
@@ -333,6 +349,12 @@ const verVisible = ref(false);
 const verTarget = ref<Applet | null>(null);
 const versions = ref<VersionRow[]>([]);
 const verLoading = ref(false);
+
+// 提交信息「submit applet X by agent N: <changelog>」→ 显示 changelog 段（无则显示原文）
+function verLabel(v: VersionRow): string {
+  const m = v.message.match(/by agent \d+: (.+)$/);
+  return m ? m[1] : v.message;
+}
 
 async function openVersions(a: Applet) {
   verTarget.value = a;
@@ -378,6 +400,9 @@ async function switchVersion(v: VersionRow) {
         <el-badge :value="taskCount" :hidden="taskCount === 0" type="warning">
           <el-button @click="tasksVisible = true; loadTasks()">推进中任务</el-button>
         </el-badge>
+        <el-tooltip content="近 30 天各小程序的打开次数与使用人数（宫格点击打点）" placement="bottom">
+          <el-button @click="openUsage">使用统计</el-button>
+        </el-tooltip>
         <el-button type="primary" @click="wizardVisible = true">＋ 新增小程序</el-button>
       </div>
     </header>
@@ -403,7 +428,12 @@ async function switchVersion(v: VersionRow) {
           <span class="st" :class="statusClass[row.status]"><i></i>{{ statusLabel[row.status] }}</span>
         </template>
       </el-table-column>
-      <el-table-column prop="authorized_users" label="授权用户" width="76" align="center" />
+      <el-table-column prop="authorized_users" label="授权用户" width="86" align="center" />
+      <el-table-column label="开发者" min-width="90">
+        <template #default="{ row }">
+          <span class="muted" :class="{ 'dev-agent': !(row as any).developer_user }">{{ (row as any).developer_user || (row as any).developer_agent || '—' }}</span>
+        </template>
+      </el-table-column>
       <el-table-column label="版本" width="64" align="center">
         <template #default="{ row }">
           <span class="muted">{{ row.version || '—' }}</span>
@@ -428,9 +458,7 @@ async function switchVersion(v: VersionRow) {
               <el-button size="small" @click="openEdit(row)">编辑</el-button>
             </el-tooltip>
             <el-dropdown trigger="click" @command="(cmd: string) => handleRowCmd(row, cmd)">
-              <el-tooltip content="切换到另外两个状态之一" placement="top">
-                <el-button size="small">状态</el-button>
-              </el-tooltip>
+              <el-button size="small">状态▾</el-button>
               <template #dropdown>
                 <el-dropdown-menu>
                   <el-dropdown-item v-for="t in TRANSITIONS[row.status] ?? []" :key="t.to" :command="'status:' + t.to">
@@ -627,6 +655,18 @@ async function switchVersion(v: VersionRow) {
         </div>
       </div>
     </el-drawer>
+    <!-- 使用统计抽屉 -->
+    <el-drawer v-model="usageVisible" title="应用使用统计（近 30 天）" size="440px">
+      <p class="hint" style="margin: 0 0 12px">数据来自用户从首页宫格打开应用的打点（2026-10-29 起生效，历史无数据）。</p>
+      <div v-loading="usageLoading">
+        <el-empty v-if="!usageLoading && usageRows.length === 0" description="暂无打开记录" :image-size="60" />
+        <div v-for="u in usageRows" :key="u.path" class="usage-row">
+          <b class="mono">{{ u.path }}</b>
+          <span class="usage-nums">{{ u.opens }} 次打开 · {{ u.users }} 个用户</span>
+        </div>
+      </div>
+    </el-drawer>
+
     <!-- 版本切换弹窗 -->
     <el-dialog v-model="verVisible" :title="`版本切换 — ${verTarget?.name}`" width="640px">
       <p class="hint" style="margin: 0 0 10px">
@@ -643,7 +683,7 @@ async function switchVersion(v: VersionRow) {
             <tr v-for="v in versions" :key="v.sha">
               <td class="mono">{{ v.sha.slice(0, 7) }}</td>
               <td>
-                <div class="ver-msg">{{ v.message }}</div>
+                <div class="ver-msg">{{ verLabel(v) }}</div>
                 <div class="ver-meta">{{ v.author }} · {{ v.date?.replace('T', ' ').slice(0, 16) }}</div>
               </td>
               <td><el-button size="small" @click="switchVersion(v)">切换到此版本</el-button></td>

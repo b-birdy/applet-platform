@@ -128,3 +128,30 @@ html[data-theme='classic'] .main {
     rgba(140, 122, 62, .025) 3px 4px
   );
 }
+
+/* 修复：弱网/低帧下 v-loading 圆环「抽风式疯转」——描边动画（stroke-dasharray 逐帧变）
+   与旋转叠加在掉帧时视觉上疯狂抖动。全局改为匀速纯旋转 + 固定短弧（GPU 合成层，不参与主线程样式计算）。 */
+.el-loading-spinner .circular {
+  animation-duration: 1.4s;
+}
+.el-loading-spinner .path {
+  animation: none;
+  stroke-dasharray: 62 169;
+  stroke-dashoffset: 0;
+}
+
+/* 开发者列：纯 agent 归属（无平台用户授权）用琥珀色区分 */
+.dev-agent { color: var(--agent); }
+
+/* 侧栏红点：待合并 PR 提醒（小程序管理菜单项右侧） */
+.nav { position: relative; }
+.red-dot {
+  position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+  width: 8px; height: 8px; border-radius: 50%; background: var(--danger);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--panel) 80%, transparent);
+}
+
+/* 使用统计行 */
+.usage-row { display: flex; align-items: center; justify-content: space-between; padding: 9px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+.usage-nums { font-size: 12px; color: var(--ink-3); }
+.mono { font-family: ui-monospace, monospace; }
