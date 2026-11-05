@@ -1,0 +1,9 @@
+{
+  "name": "错题宝库",
+  "short_name": "错题宝库",
+  "description": "拍照收错题 → AI 归因打标 → 统计弱点 → 针对性出题练习",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f6f1e7",
+  "theme_color": "#f6f1e7"
+}

@@ -1,0 +1,59 @@
+{
+  "id": "wrongbook-manage-",
+  "name": "错题宝库",
+  "icon": "📖",
+  "entry": "index.html",
+  "version": "v0.1",
+  "changelog": "首版：错题收录、AI 归因打标、升华统计、针对性出题练习",
+  "external_apis": ["*"],
+  "display": "new_tab",
+  "tables": [
+    { "name": "wrongbooks", "description": "错题簿", "columns": [
+      { "name": "name", "type": "text", "required": true },
+      { "name": "level1", "type": "text", "required": true },
+      { "name": "level2", "type": "text", "required": true } ] },
+    { "name": "mistakes", "description": "错题", "columns": [
+      { "name": "book_id", "type": "integer", "required": true },
+      { "name": "question_text", "type": "text", "required": true },
+      { "name": "user_answer", "type": "text" },
+      { "name": "right_answer", "type": "text" },
+      { "name": "answer_source", "type": "text" },
+      { "name": "analysis", "type": "text" },
+      { "name": "question_type", "type": "text" },
+      { "name": "images", "type": "text" },
+      { "name": "source", "type": "text" },
+      { "name": "confirmed", "type": "integer", "default": 0 },
+      { "name": "subject", "type": "text" } ] },
+    { "name": "tags", "description": "用户标签库（四维）", "columns": [
+      { "name": "name", "type": "text", "required": true },
+      { "name": "dim", "type": "text", "required": true },
+      { "name": "subject", "type": "text" } ] },
+    { "name": "mistake_tags", "description": "错题与标签多对多", "columns": [
+      { "name": "mistake_id", "type": "integer", "required": true },
+      { "name": "tag_id", "type": "integer", "required": true } ] },
+    { "name": "questions", "description": "AI 生成的练习题", "columns": [
+      { "name": "book_id", "type": "integer", "required": true },
+      { "name": "origin", "type": "text", "required": true },
+      { "name": "stem", "type": "text", "required": true },
+      { "name": "answer", "type": "text", "required": true },
+      { "name": "grading_points", "type": "text" },
+      { "name": "q_type", "type": "text", "required": true },
+      { "name": "mode", "type": "text", "required": true },
+      { "name": "ref_mistake_id", "type": "integer" },
+      { "name": "batch_id", "type": "text" } ] },
+    { "name": "attempts", "description": "练习作答记录", "columns": [
+      { "name": "question_id", "type": "integer", "required": true },
+      { "name": "answer", "type": "text", "required": true },
+      { "name": "result", "type": "text", "required": true },
+      { "name": "score", "type": "real" },
+      { "name": "feedback", "type": "text" } ] },
+    { "name": "settings", "description": "用户设置（接入点/主题等 KV）", "columns": [
+      { "name": "kind", "type": "text", "required": true },
+      { "name": "value", "type": "text", "required": true } ] },
+    { "name": "feedback", "description": "用户反馈", "columns": [
+      { "name": "type", "type": "text", "required": true },
+      { "name": "content", "type": "text", "required": true },
+      { "name": "status", "type": "text", "default": "open" },
+      { "name": "reply", "type": "text" } ] }
+  ]
+}
